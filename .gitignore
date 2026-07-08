@@ -3,9 +3,12 @@
 Section 2.jpg
 dashboard figma/
 
+temp_auto_push.bat
 # TypeScript incremental build cache
 *.tsbuildinfo
 
 # OS
 .DS_Store
 Thumbs.db
+.gitignore
+branch_structure.json
