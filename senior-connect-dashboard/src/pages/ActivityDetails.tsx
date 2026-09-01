@@ -1,208 +1,162 @@
-import { useParams, useNavigate } from 'react-router-dom';
-import { Banknote, Check, Clock, ImageOff, MapPin, MapPinned, Trash2, Users2, X } from 'lucide-react';
-import {
-  useDeleteActivityMutation,
-  useGetActivityDetailsQuery,
-  useUpdateActivityStatusMutation,
-} from '../app/api/apiSlice';
+/**
+ * Activity Details — `Dashboard figma design/Activities.svg`.
+ *
+ * A full-bleed hero tucked under the topbar carrying the category and review
+ * chips over a large white title, then a 1fr/304px split: Description and the
+ * 2×2 Activity Highlights grid on the left, Location (with map thumbnail) and
+ * the organizer card on the right.
+ */
+import { useParams } from 'react-router-dom';
+import { CalendarDays, Clock, MapPin, Ticket, Users2 } from 'lucide-react';
+import type { ComponentType } from 'react';
+import { useGetActivityDetailsQuery } from '../app/api/apiSlice';
 import Avatar from '../components/Avatar';
 import Card from '../components/Card';
-import PageHeader from '../components/PageHeader';
-import StatusBadge from '../components/StatusBadge';
+import Thumb from '../components/Thumb';
+import { useTopbar } from '../layouts/topbar';
+import { formatPrice } from '../lib/format';
 
-/**
- * Figma "Activity Details" screen — hero image w/ overlaid title, then
- * Description + Location (row 1), Activity Highlights + Organized by (row 2).
- * Wired to GET /activities/admin/activities/:id.
- */
+/** "Pending" is shown as "Pending Review" on the hero chip. */
+const heroStatus = (status: string) => (status === 'Pending' ? 'Pending Review' : status);
+
+function Highlight({
+  icon: Icon,
+  label,
+  value,
+  note,
+}: {
+  icon: ComponentType<{ size?: number; strokeWidth?: number }>;
+  label: string;
+  value: string;
+  note?: string | null;
+}) {
+  return (
+    <div className="flex gap-3 rounded-field bg-soft-bg p-4">
+      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-ok-bg text-ok-fg">
+        <Icon size={17} strokeWidth={1.75} />
+      </span>
+      <div className="min-w-0">
+        <div className="text-[11px] font-medium tracking-[0.06em] text-muted uppercase">{label}</div>
+        <div className="mt-0.5 text-base font-medium text-ink-strong">{value}</div>
+        {note && <div className="mt-0.5 text-xs text-accent">{note}</div>}
+      </div>
+    </div>
+  );
+}
+
 export default function ActivityDetails() {
-  const { activityId } = useParams<{ activityId: string }>();
-  const navigate = useNavigate();
-  const { data, isLoading } = useGetActivityDetailsQuery(activityId ?? '', { skip: !activityId });
-  const [updateActivityStatus] = useUpdateActivityStatusMutation();
-  const [deleteActivity] = useDeleteActivityMutation();
+  const { activityId = '' } = useParams();
+  const { data } = useGetActivityDetailsQuery(activityId, { skip: !activityId });
 
-  if (isLoading) {
-    return (
-      <div>
-        <PageHeader title="Activity Details" backTo="/activities" showSearch showBell />
-        <p className="text-sm text-muted">Loading…</p>
-      </div>
-    );
-  }
+  useTopbar({ title: 'Activity Details', backTo: '/activities' });
 
-  const d = data?.data;
-  if (!d || !activityId) {
-    return (
-      <div>
-        <PageHeader title="Activity Details" backTo="/activities" showSearch showBell />
-        <p className="text-sm text-muted">Activity not found.</p>
-      </div>
-    );
-  }
+  const activity = data?.data;
+  if (!activity) return <p className="text-sm text-muted">Loading activity…</p>;
 
-  const organizerName = `${d.organizer.firstName} ${d.organizer.lastName}`.trim();
-  const mapsUrl =
-    d.latitude !== null && d.longitude !== null
-      ? `https://www.google.com/maps?q=${d.latitude},${d.longitude}`
-      : null;
-
-  const highlightCards = [
-    {
-      icon: Users2,
-      label: 'PARTICIPANTS',
-      value: `${d.maximumNumberOfParticipants} Slots Total`,
-      note: `${d.joinedCount} joined so far`,
-    },
-    { icon: Users2, label: 'AGE RANGE', value: d.ageLimit, note: 'Participant age range' },
-    {
-      icon: Banknote,
-      label: 'PRICE',
-      value: d.price != null ? `$${d.price.toFixed(2)}` : 'Free',
-      note: 'Paid directly to the organizer',
-    },
-    { icon: Clock, label: 'DURATION', value: d.activityDuration, note: `Starts at ${d.activityTime}` },
-  ];
-
-  const handleApprove = () => updateActivityStatus({ id: activityId, status: 'Approved' });
-  const handleReject = () => updateActivityStatus({ id: activityId, status: 'Rejected' });
-  const handleDelete = async () => {
-    await deleteActivity(activityId);
-    navigate('/activities');
-  };
+  const [venue, ...addressLines] = activity.activityLocation.split(', ');
 
   return (
-    <div>
-      <PageHeader title="Activity Details" backTo="/activities" showSearch showBell />
-
-      <div className="mx-auto max-w-5xl">
-        <Card className="relative mb-6 aspect-[1024/500] w-full overflow-hidden rounded-[20px] bg-neutral-bg">
-          {d.activityPhoto ? (
-            <img src={d.activityPhoto} alt={d.activityName} className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-neutral-text">
-              <ImageOff size={40} />
-            </div>
-          )}
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent p-6">
-            <div className="flex gap-2">
-              <span className="rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-ink">
-                {d.category.categoryName.toUpperCase()}
-              </span>
-              <span className="rounded-full bg-success px-3 py-1 text-xs font-semibold text-white">
-                {d.status.toUpperCase()}
-              </span>
-            </div>
-            <h1 className="mt-3 font-heading text-3xl font-bold text-white">{d.activityName}</h1>
+    <div className="space-y-6">
+      {/* Hero — breaks out of the content column to sit flush under the topbar. */}
+      <div className="relative -mx-8 -mt-8 h-[505px] overflow-hidden bg-track">
+        <Thumb src={activity.activityPhoto} alt={activity.activityName} className="size-full" />
+        <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/70 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 space-y-3 p-8">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-action px-3 py-1.5 text-[11px] font-semibold tracking-[0.06em] text-white uppercase">
+              {activity.category.categoryName}
+            </span>
+            <span className="rounded-full bg-white px-3 py-1.5 text-[11px] font-semibold tracking-[0.06em] text-ink uppercase">
+              {heroStatus(activity.status)}
+            </span>
           </div>
-        </Card>
+          <h2 className="text-[48px] leading-[1.05] font-bold text-white">{activity.activityName}</h2>
+        </div>
+      </div>
 
-        {d.status === 'Pending' && (
-          <div className="mb-6 flex gap-3">
-            <button
-              type="button"
-              onClick={handleApprove}
-              className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-bold text-white hover:bg-primary-dark"
-            >
-              <Check size={16} />
-              Approve Activity
-            </button>
-            <button
-              type="button"
-              onClick={handleReject}
-              className="flex items-center gap-2 rounded-lg bg-danger-bg px-5 py-2.5 text-sm font-bold text-danger-text hover:bg-danger-bg/70"
-            >
-              <X size={16} />
-              Reject Activity
-            </button>
-          </div>
-        )}
-        {d.status === 'Rejected' && d.rejectionReason && (
-          <div className="mb-6 rounded-xl bg-danger-bg px-4 py-3 text-sm text-danger-text">
-            Rejection reason: {d.rejectionReason}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <Card className="flex flex-col rounded-[20px] p-6 lg:col-span-2">
-            <h2 className="border-b border-line pb-3 font-heading text-base font-bold text-ink">Description</h2>
-            <div className="flex flex-1 flex-col justify-center gap-4 py-4">
-              <p className="text-sm leading-relaxed text-body">{d.descriptions}</p>
-            </div>
-          </Card>
-
-          <Card className="p-6">
-            <h2 className="font-heading text-base font-bold text-ink">Location</h2>
-            {mapsUrl && (
-              <a
-                href={mapsUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-page py-6 text-sm font-semibold text-primary hover:bg-success-bg"
-              >
-                <MapPinned size={18} />
-                Open in Maps
-              </a>
-            )}
-            <div className="mt-4 flex gap-2 text-sm">
-              <MapPin size={16} className="mt-0.5 shrink-0 text-primary" />
-              <p className="text-body">{d.activityLocation}</p>
-            </div>
-          </Card>
-
-          <Card className="rounded-[20px] p-6 lg:col-span-2">
-            <h2 className="font-heading text-base font-bold text-ink">Activity Highlights</h2>
-            <div className="mt-4 grid grid-cols-2 gap-4">
-              {highlightCards.map(({ icon: Icon, label, value, note }) => (
-                <div key={label} className="rounded-xl bg-page p-4">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-success-bg text-success">
-                    <Icon size={17} />
-                  </span>
-                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-label">{label}</p>
-                  <p className="mt-1 text-sm font-bold text-ink">{value}</p>
-                  <p className="mt-0.5 text-xs text-muted">{note}</p>
-                </div>
+      <div className="grid grid-cols-[1fr_304px] gap-6">
+        <div className="space-y-6">
+          <Card>
+            <h3 className="border-b border-line pb-4 text-xl font-bold text-ink-strong">Description</h3>
+            <div className="mt-4 space-y-4 text-base leading-relaxed text-body">
+              {activity.descriptions.split('\n\n').map((paragraph) => (
+                <p key={paragraph.slice(0, 32)}>{paragraph}</p>
               ))}
             </div>
-            <div className="mt-4 flex items-center gap-2 text-xs text-muted">
-              <span className="font-semibold uppercase tracking-wide text-label">Difficulty:</span>
-              {d.difficulty}
-              {d.activityEquipment && (
-                <>
-                  <span className="mx-1">•</span>
-                  <span className="font-semibold uppercase tracking-wide text-label">Equipment:</span>
-                  {d.activityEquipment}
-                </>
-              )}
+          </Card>
+
+          <Card>
+            <h3 className="text-xl font-bold text-ink-strong">Activity Highlights</h3>
+            <div className="mt-4 grid grid-cols-2 gap-4">
+              <Highlight
+                icon={Users2}
+                label="Participants"
+                value={`${activity.maximumNumberOfParticipants} Slots Total`}
+                note={`${activity.joinedCount} spots already requested`}
+              />
+              <Highlight
+                icon={CalendarDays}
+                label="Age Range"
+                value={activity.ageLimit || `${activity.minAge} – ${activity.maxAge} Years`}
+                note={activity.ageRangeNote}
+              />
+              <Highlight
+                icon={Ticket}
+                label="Price"
+                value={formatPrice(activity.price)}
+                note={activity.priceNote ?? activity.activityEquipment}
+              />
+              <Highlight
+                icon={Clock}
+                label="Duration"
+                value={activity.activityDuration}
+                note={activity.durationNote}
+              />
+            </div>
+          </Card>
+        </div>
+
+        <div className="space-y-6">
+          <Card>
+            <h3 className="text-xl font-bold text-ink-strong">Location</h3>
+            {activity.mapImage && (
+              <Thumb
+                src={activity.mapImage}
+                className="mt-4 h-[124px] w-full rounded-field border border-line"
+              />
+            )}
+            <div className="mt-4 flex gap-2">
+              <MapPin size={18} className="mt-0.5 shrink-0 text-action" />
+              <div className="text-sm">
+                <div className="font-medium text-ink-strong">{venue}</div>
+                {addressLines.length > 0 && (
+                  <div className="mt-0.5 text-muted">{addressLines.join(', ')}</div>
+                )}
+              </div>
             </div>
           </Card>
 
-          <Card className="p-6">
-            <div className="flex items-center justify-between">
-              <h2 className="font-heading text-base font-bold text-ink">Organized by</h2>
-              <StatusBadge status={d.status} />
-            </div>
+          <Card>
+            <h3 className="text-xl font-bold text-ink-strong">Organized by</h3>
             <div className="mt-4 flex items-center gap-3">
-              <Avatar src={d.organizer.profilePhoto} name={organizerName} size={48} />
-              <div>
-                <p className="text-sm font-bold text-ink">{organizerName || 'Unknown organizer'}</p>
-                <p className="text-xs text-muted">{d.organizer.email}</p>
+              <Avatar
+                src={activity.organizer.profilePhoto}
+                firstName={activity.organizer.firstName}
+                lastName={activity.organizer.lastName}
+                size={52}
+              />
+              <div className="min-w-0">
+                <div className="text-lg font-medium text-ink-strong">
+                  {activity.organizer.firstName} {activity.organizer.lastName}
+                </div>
+                <div className="truncate text-xs text-muted">{activity.organizer.email}</div>
               </div>
             </div>
             <button
               type="button"
-              onClick={() => navigate(`/users/${d.organizer.id}`)}
-              className="mt-5 w-full rounded-lg border border-line py-2.5 text-sm font-semibold text-body hover:bg-page"
+              className="mt-4 h-12 w-full rounded-field border border-action text-base font-medium text-action hover:bg-soft-bg"
             >
               View Organizer Profile
-            </button>
-            <button
-              type="button"
-              onClick={handleDelete}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-danger-bg py-2.5 text-sm font-semibold text-danger hover:bg-danger-bg"
-            >
-              <Trash2 size={15} />
-              Delete Activity
             </button>
           </Card>
         </div>

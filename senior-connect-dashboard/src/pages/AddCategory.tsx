@@ -1,98 +1,81 @@
+/**
+ * Add Category — `Dashboard figma design/Users-4.svg`.
+ *
+ * Reuses the Categories topbar and heading block. The form panel is drawn on
+ * the page fill with a 1px outline rather than as a white card.
+ */
 import { useState } from 'react';
+import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus } from 'lucide-react';
 import { useCreateCategoryMutation, useGetCategoriesQuery } from '../app/api/apiSlice';
-import Card from '../components/Card';
-import PageHeader from '../components/PageHeader';
+import CategoriesHeading from '../components/CategoriesChrome';
+import useCategoriesTopbar from '../components/useCategoriesTopbar';
 
-/** Figma "Add Category" screen — Category Name input, Cancel / Save and continue. Wired to POST /categories/admin/categories. */
 export default function AddCategory() {
+  useCategoriesTopbar();
+
   const navigate = useNavigate();
   const [categoryName, setCategoryName] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const { data } = useGetCategoriesQuery({ page: 1, limit: 1 });
+  const { data } = useGetCategoriesQuery({ page: 1, limit: 5 });
   const [createCategory, { isLoading }] = useCreateCategoryMutation();
 
-  const stats = data?.data.stats;
-
-  const handleSave = async () => {
-    if (!categoryName.trim()) {
-      setError('Category Name is required.');
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    const trimmed = categoryName.trim();
+    if (!trimmed) {
+      setError('Category name is required.');
       return;
     }
-    setError(null);
     try {
-      await createCategory({ categoryName: categoryName.trim() }).unwrap();
+      await createCategory({ categoryName: trimmed }).unwrap();
       navigate('/categories');
-    } catch (err) {
-      const message =
-        (err as { data?: { message?: string } })?.data?.message ?? 'Failed to create category';
-      setError(message);
+    } catch {
+      setError('Could not create the category. Please try again.');
     }
   };
 
   return (
-    <div>
-      <PageHeader
-        title="Categories"
-        action={
-          <button
-            type="button"
-            className="flex items-center gap-2 rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-dark"
-          >
-            <Plus size={16} />
-            Add Category
-          </button>
-        }
-      />
+    <div className="space-y-6">
+      <CategoriesHeading title="Add Category" stats={data?.data.stats} />
 
-      <div className="mb-5 flex items-center justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-label">Management</p>
-          <h2 className="font-heading text-2xl font-bold text-ink">Add Category</h2>
-        </div>
-        <div className="flex gap-3">
-          <div className="flex items-center gap-2 rounded-xl bg-card px-4 py-2.5 ring-1 ring-line">
-            <span className="text-sm text-muted">Total Categories</span>
-            <span className="font-heading text-lg font-bold text-primary">{stats?.totalCategories ?? '—'}</span>
-          </div>
-          <div className="flex items-center gap-2 rounded-xl bg-card px-4 py-2.5 ring-1 ring-line">
-            <span className="text-sm text-muted">Active Now</span>
-            <span className="font-heading text-lg font-bold text-primary">{stats?.activeNow ?? '—'}</span>
-          </div>
-        </div>
-      </div>
-
-      <Card className="p-6">
-        <label className="mb-1.5 block text-sm font-semibold text-ink" htmlFor="categoryName">
+      <form
+        onSubmit={handleSubmit}
+        className="rounded-card border border-line bg-page p-6"
+        noValidate
+      >
+        <label htmlFor="categoryName" className="block text-sm font-medium text-ink-strong">
           Category Name
         </label>
         <input
           id="categoryName"
-          type="text"
           value={categoryName}
-          onChange={(e) => setCategoryName(e.target.value)}
-          className="w-full rounded-lg border border-line px-3.5 py-2.5 text-sm text-ink outline-none focus:border-primary"
+          onChange={(event) => {
+            setCategoryName(event.target.value);
+            setError(null);
+          }}
+          placeholder="e.g. Outdoor Gardening"
+          className="mt-2 h-11 w-full rounded-lg border border-line bg-card px-4 text-base text-body outline-none focus:border-brand"
         />
-        {error && <p className="mt-2 text-sm font-medium text-danger">{error}</p>}
-        <div className="mt-6 flex justify-end gap-3">
+        {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+
+        <div className="mt-8 flex justify-end gap-4">
           <button
             type="button"
             onClick={() => navigate('/categories')}
-            className="rounded-lg bg-page px-6 py-2.5 text-sm font-semibold text-primary"
+            className="h-[52px] w-[253px] rounded-field bg-brand-tint text-base font-medium text-brand"
           >
             Cancel
           </button>
           <button
-            type="button"
-            onClick={handleSave}
+            type="submit"
             disabled={isLoading}
-            className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60"
+            className="h-[52px] w-[253px] rounded-field bg-action text-base font-medium text-white hover:bg-action-hover disabled:opacity-60"
           >
             {isLoading ? 'Saving…' : 'Save and continue'}
           </button>
         </div>
-      </Card>
+      </form>
     </div>
   );
 }

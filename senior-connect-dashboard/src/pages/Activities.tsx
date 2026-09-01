@@ -1,233 +1,243 @@
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Calendar, Check, ChevronDown, ImageOff, Leaf, X } from 'lucide-react';
+/**
+ * Activities — `Dashboard figma design/Users-1.svg` (Pending),
+ * `Users-5.svg` (Approved) and `Users-6.svg` (Rejected).
+ *
+ * A segmented status control and a category select above a three-up card grid.
+ * Pending cards get Approve + reject; already-decided cards get a single
+ * full-width Delete button. The footer sits on the page, outside any card.
+ */
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { CalendarDays, CheckCircle2, ChevronDown, MapPin, X } from 'lucide-react';
 import {
   useDeleteActivityMutation,
   useGetActiveCategoriesQuery,
   useGetActivitiesQuery,
   useUpdateActivityStatusMutation,
-  type ActivityStatus,
 } from '../app/api/apiSlice';
+import type { ActivityCard as ActivityCardType, ActivityStatus } from '../app/api/types';
+import ApiError from '../components/ApiError';
 import Avatar from '../components/Avatar';
-import Card from '../components/Card';
-import Pagination from '../components/Pagination';
-import PageHeader from '../components/PageHeader';
+import Thumb from '../components/Thumb';
+import { useTopbar } from '../layouts/topbar';
+import { formatDateTime } from '../lib/format';
 
-/**
- * Figma "Activities" screen — tabs Pending | Approved | Rejected, category filter,
- * activity photo cards (organizer, date, Approve/Reject or Delete).
- * Wired to GET /activities/admin/activities.
- */
-const tabs: { label: string; status: ActivityStatus }[] = [
-  { label: 'Pending', status: 'Pending' },
-  { label: 'Approved', status: 'Approved' },
-  { label: 'Rejected', status: 'Rejected' },
+const TABS: Array<{ value: Extract<ActivityStatus, 'Pending' | 'Approved' | 'Rejected'>; label: string }> = [
+  { value: 'Pending', label: 'Pending' },
+  { value: 'Approved', label: 'Approved' },
+  { value: 'Rejected', label: 'Rejected' },
 ];
 
 const PAGE_SIZE = 6;
 
+/** The status chip sits inline to the right of the card title. */
+const CHIP: Record<string, string> = {
+  Pending: 'bg-chip-pending-bg text-chip-pending-fg',
+  Approved: 'bg-chip-active-bg text-chip-active-fg',
+  Rejected: 'bg-chip-rejected-bg text-chip-rejected-fg',
+};
+
+/** "Approved" reads as ACTIVE on the card, as drawn in the frame. */
+const chipLabel = (status: ActivityStatus) => (status === 'Approved' ? 'ACTIVE' : status.toUpperCase());
+
+function ActivityCard({
+  activity,
+  onApprove,
+  onReject,
+  onDelete,
+}: {
+  activity: ActivityCardType;
+  onApprove: () => void;
+  onReject: () => void;
+  onDelete: () => void;
+}) {
+  const pending = activity.status === 'Pending';
+
+  return (
+    <article className="overflow-hidden rounded-card border border-line bg-card shadow-card">
+      <div className="relative h-[195px] bg-track">
+        <Link to={`/activities/${activity.id}`}>
+          <Thumb src={activity.activityPhoto} alt={activity.activityName} className="size-full" />
+        </Link>
+        <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-card/95 py-1.5 pr-3 pl-2.5 text-sm font-medium text-ok-fg">
+          <MapPin size={14} />
+          {activity.categoryName}
+        </span>
+      </div>
+
+      <div className="space-y-3 p-6">
+        <div className="flex items-start justify-between gap-3">
+          <Link
+            to={`/activities/${activity.id}`}
+            className="text-base leading-snug text-ink-strong hover:text-action"
+          >
+            {activity.activityName}
+          </Link>
+          <span
+            className={`shrink-0 rounded px-2 py-1 text-[11px] font-semibold tracking-[0.03em] ${
+              CHIP[activity.status] ?? 'bg-head-bg text-muted'
+            }`}
+          >
+            {chipLabel(activity.status)}
+          </span>
+        </div>
+
+        <p className="flex items-center gap-2 text-sm text-body">
+          <Avatar
+            src={activity.organizer.profilePhoto}
+            firstName={activity.organizer.firstName}
+            lastName={activity.organizer.lastName}
+            size={24}
+          />
+          Organizer: {activity.organizer.firstName} {activity.organizer.lastName}
+        </p>
+
+        <p className="flex items-center gap-2 text-sm text-body">
+          <CalendarDays size={16} className="text-muted" />
+          {formatDateTime(activity.activityDate, activity.activityTime)}
+        </p>
+
+        {pending ? (
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              type="button"
+              onClick={onApprove}
+              className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-field bg-action text-base font-medium text-white hover:bg-action-hover"
+            >
+              <CheckCircle2 size={18} />
+              Approve
+            </button>
+            <button
+              type="button"
+              aria-label="Reject activity"
+              onClick={onReject}
+              className="grid size-12 shrink-0 place-items-center rounded-field bg-reject-bg text-reject-fg"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="h-12 w-full rounded-field bg-action text-base font-medium text-white hover:bg-action-hover"
+          >
+            Delete
+          </button>
+        )}
+      </div>
+    </article>
+  );
+}
+
 export default function Activities() {
-  const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<ActivityStatus>('Pending');
-  const [page, setPage] = useState(1);
+  useTopbar({ title: 'Activities' });
+
+  const [status, setStatus] = useState<ActivityStatus>('Pending');
   const [categoryId, setCategoryId] = useState('');
-  const [categoryOpen, setCategoryOpen] = useState(false);
-  const categoryRef = useRef<HTMLDivElement>(null);
+  const [page, setPage] = useState(1);
 
-  useEffect(() => {
-    const onClickOutside = (e: MouseEvent) => {
-      if (categoryRef.current && !categoryRef.current.contains(e.target as Node)) setCategoryOpen(false);
-    };
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, []);
-
-  const { data, isLoading, isFetching } = useGetActivitiesQuery({
-    status: activeTab,
-    categoryId: categoryId || undefined,
+  const { data: categories } = useGetActiveCategoriesQuery();
+  const { data, isError, refetch } = useGetActivitiesQuery({
     page,
     limit: PAGE_SIZE,
+    status,
+    categoryId: categoryId || undefined,
   });
-  const { data: categoriesData } = useGetActiveCategoriesQuery();
   const [updateActivityStatus] = useUpdateActivityStatusMutation();
   const [deleteActivity] = useDeleteActivityMutation();
 
   const activities = data?.data ?? [];
-  const categories = categoriesData?.data ?? [];
   const meta = data?.meta;
   const totalPages = meta?.totalPages ?? 1;
-  const total = meta?.total ?? 0;
-  const shown = Math.min(page * PAGE_SIZE, total);
-  const selectedCategoryName = categories.find((c) => c.id === categoryId)?.categoryName ?? 'All Categories';
 
   return (
-    <div>
-      <PageHeader title="Activities" showSearch showBell />
-
-      <div className="mx-auto max-w-9xl">
-        <div className="mb-5 flex items-center justify-between">
-          <div className="flex gap-1 rounded-xl bg-card p-1 ring-1 ring-line">
-            {tabs.map((tab) => (
-              <button
-                key={tab.status}
-                type="button"
-                onClick={() => {
-                  setActiveTab(tab.status);
-                  setPage(1);
-                }}
-                className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-                  activeTab === tab.status ? 'bg-card text-primary ring-1 ring-line' : 'text-muted'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-          <div ref={categoryRef} className="relative">
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-4">
+        <div className="inline-flex h-12 items-center rounded-field bg-track p-1">
+          {TABS.map((tab) => (
             <button
+              key={tab.value}
               type="button"
-              onClick={() => setCategoryOpen((v) => !v)}
-              className="flex items-center gap-2 rounded-lg bg-card px-4 py-2 text-sm font-medium text-body ring-1 ring-line"
+              onClick={() => {
+                setStatus(tab.value);
+                setPage(1);
+              }}
+              className={`h-10 w-[110px] rounded-lg text-base transition-colors ${
+                status === tab.value ? 'bg-card text-action shadow-card' : 'text-body'
+              }`}
             >
-              {selectedCategoryName}
-              <ChevronDown size={15} />
+              {tab.label}
             </button>
-            {categoryOpen && (
-              <div className="absolute right-0 top-full z-40 mt-2 w-56 max-h-72 overflow-y-auto rounded-2xl border border-line bg-card p-2 shadow-xl">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCategoryId('');
-                    setPage(1);
-                    setCategoryOpen(false);
-                  }}
-                  className={`flex w-full items-center rounded-xl px-3 py-2 text-sm font-medium hover:bg-page ${
-                    categoryId === '' ? 'text-primary' : 'text-body'
-                  }`}
-                >
-                  All Categories
-                </button>
-                {categories.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => {
-                      setCategoryId(c.id);
-                      setPage(1);
-                      setCategoryOpen(false);
-                    }}
-                    className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium hover:bg-page ${
-                      categoryId === c.id ? 'text-primary' : 'text-body'
-                    }`}
-                  >
-                    {c.categoryName}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          ))}
         </div>
 
-        {!isLoading && activities.length === 0 && (
-          <Card className="p-10 text-center text-sm text-muted">No {activeTab.toLowerCase()} activities.</Card>
-        )}
-
-        <div
-          className="grid justify-center gap-x-30 gap-y-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
-          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(0, 260px))' }}
-        >
-          {activities.map((activity) => {
-            const organizerName = `${activity.organizer.firstName} ${activity.organizer.lastName}`.trim();
-            const dateTime = `${new Date(activity.activityDate).toLocaleDateString('en-US', {
-              month: 'short',
-              day: '2-digit',
-              year: 'numeric',
-            })} • ${activity.activityTime}`;
-
-            return (
-              <Card key={activity.id} className="flex w-[350px] flex-col overflow-hidden rounded-[20px]">
-                <div className="relative aspect-[260/165] w-full shrink-0 bg-neutral-bg">
-                  {activity.activityPhoto ? (
-                    <img
-                      src={activity.activityPhoto}
-                      alt={activity.activityName}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-neutral-text">
-                      <ImageOff size={28} />
-                    </div>
-                  )}
-                  <span className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-semibold text-ink">
-                    <Leaf size={11} className="text-success" />
-                    {activity.categoryName}
-                  </span>
-                </div>
-                <div className="flex-1 space-y-2.5 p-3.5">
-                  <h3 className="text-sm font-bold text-ink">{activity.activityName}</h3>
-                  <div className="flex items-center gap-2 text-xs text-muted">
-                    <Avatar src={activity.organizer.profilePhoto} name={organizerName} size={20} />
-                    Organizer: {organizerName || 'Unknown'}
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-muted">
-                    <Calendar size={14} />
-                    {dateTime}
-                  </div>
-
-                  {activeTab === 'Pending' ? (
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => updateActivityStatus({ id: activity.id, status: 'Approved' })}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary py-1.5 text-xs font-bold text-white hover:bg-primary-dark"
-                      >
-                        <Check size={13} />
-                        Approve
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateActivityStatus({ id: activity.id, status: 'Rejected' })}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-danger-bg text-danger"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => deleteActivity(activity.id)}
-                      className="w-full rounded-lg bg-primary py-1.5 text-xs font-bold text-white hover:bg-primary-dark"
-                    >
-                      Delete
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/activities/${activity.id}`)}
-                    className="w-full text-center text-xs font-semibold text-primary hover:underline"
-                  >
-                    View details
-                  </button>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-
-        <Card className="mt-5 mx-auto max-w-[1380px]">
-          <Pagination
-            summary={
-              isFetching
-                ? 'Loading…'
-                : `Showing ${shown} of ${total} ${activeTab.toLowerCase()} activities`
-            }
-            page={page}
-            totalPages={totalPages}
-            onPageChange={setPage}
-            variant="prev-next"
+        <label className="relative">
+          <select
+            value={categoryId}
+            onChange={(event) => {
+              setCategoryId(event.target.value);
+              setPage(1);
+            }}
+            aria-label="Filter by category"
+            className="h-12 w-[166px] appearance-none rounded-field border border-line bg-card pr-10 pl-4 text-base text-body outline-none"
+          >
+            <option value="">All Categories</option>
+            {(categories?.data ?? []).map((category) => (
+              <option key={category.id} value={category.categoryName}>
+                {category.categoryName}
+              </option>
+            ))}
+          </select>
+          <ChevronDown
+            size={18}
+            className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-muted"
           />
-        </Card>
+        </label>
+      </div>
+
+      {isError ? (
+        <ApiError what="activities" onRetry={() => refetch()} />
+      ) : activities.length === 0 ? (
+        <p className="py-16 text-center text-sm text-muted">No {status.toLowerCase()} activities.</p>
+      ) : (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-6">
+          {activities.map((activity) => (
+            <ActivityCard
+              key={activity.id}
+              activity={activity}
+              onApprove={() => updateActivityStatus({ id: activity.id, status: 'Approved' })}
+              onReject={() => updateActivityStatus({ id: activity.id, status: 'Rejected' })}
+              onDelete={() => deleteActivity(activity.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between border-t border-line pt-6">
+        <p className="text-base text-body">
+          Showing <span className="font-medium text-ink-strong">{activities.length}</span> of{' '}
+          <span className="font-medium text-ink-strong">{meta?.total ?? 0}</span>{' '}
+          {status.toLowerCase()} activities
+        </p>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            disabled={page === 1}
+            onClick={() => setPage((prev) => prev - 1)}
+            className="h-11 rounded-field px-6 text-base text-muted disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            disabled={page >= totalPages}
+            onClick={() => setPage((prev) => prev + 1)}
+            className="h-11 rounded-field bg-action px-7 text-base font-medium text-white disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
   );

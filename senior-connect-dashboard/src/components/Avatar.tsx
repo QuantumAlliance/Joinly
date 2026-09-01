@@ -1,56 +1,60 @@
+/**
+ * Photo avatar with an initials fallback.
+ *
+ * The Figma frames use both: photos in the Users table and on detail screens,
+ * initials-on-mint circles in the dashboard's Recent Users table. Passing no
+ * `src` (or a src that fails to load) renders the initials treatment.
+ */
 interface AvatarProps {
   src?: string | null;
-  name?: string;
-  alt?: string;
+  firstName?: string;
+  lastName?: string;
+  /** Pixel diameter — 46 in the Users table, 36 in Recent Users. */
   size?: number;
+  /** 2px ring, as drawn around the Users table avatars. */
+  ring?: boolean;
+  /** Background utility for the initials treatment; defaults to mint. */
+  tintClass?: string;
   className?: string;
 }
 
-/** Deterministic pastel palette so the same name always gets the same color. */
-const PALETTE = [
-  { bg: '#dcf1e2', text: '#1f7a4d' }, // green
-  { bg: '#dbeafe', text: '#1d4ed8' }, // blue
-  { bg: '#fdecd2', text: '#b7791f' }, // amber
-  { bg: '#ede9fe', text: '#6d28d9' }, // violet
-  { bg: '#fde3e2', text: '#dc2626' }, // red
-  { bg: '#e0f2fe', text: '#0369a1' }, // sky
-];
+import { useEffect, useState } from 'react';
 
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
+export default function Avatar({
+  src,
+  firstName = '',
+  lastName = '',
+  size = 36,
+  ring = false,
+  tintClass = 'bg-[#d9e6da]',
+  className = '',
+}: AvatarProps) {
+  const [failed, setFailed] = useState(false);
 
-function paletteFor(name: string): { bg: string; text: string } {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
-  return PALETTE[Math.abs(hash) % PALETTE.length];
-}
+  // A new src deserves a fresh attempt even if the previous one 404'd.
+  useEffect(() => setFailed(false), [src]);
 
-/** Real uploaded photo when available; otherwise a deterministic initials avatar — never a stock placeholder photo. */
-export default function Avatar({ src, name = '', alt = '', size = 36, className = '' }: AvatarProps) {
-  if (src) {
+  const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() || '?';
+  const box = { width: size, height: size };
+
+  if (!src || failed) {
     return (
-      <img
-        src={src}
-        alt={alt || name}
-        style={{ width: size, height: size }}
-        className={`shrink-0 rounded-full object-cover ${className}`}
-      />
+      <span
+        style={{ ...box, fontSize: Math.round(size * 0.34) }}
+        className={`inline-flex shrink-0 items-center justify-center rounded-full font-medium text-ink ${tintClass} ${className}`}
+      >
+        {initials}
+      </span>
     );
   }
 
-  const { bg, text } = paletteFor(name || alt || '?');
   return (
-    <span
-      role="img"
-      aria-label={alt || name}
-      style={{ width: size, height: size, backgroundColor: bg, color: text, fontSize: size * 0.4 }}
-      className={`flex shrink-0 items-center justify-center rounded-full font-bold ${className}`}
-    >
-      {initialsOf(name || alt || '?')}
-    </span>
+    <img
+      src={src}
+      alt={`${firstName} ${lastName}`.trim() || 'Avatar'}
+      style={box}
+      onError={() => setFailed(true)}
+      className={`shrink-0 rounded-full object-cover ${ring ? 'ring-2 ring-track' : ''} ${className}`}
+    />
   );
 }

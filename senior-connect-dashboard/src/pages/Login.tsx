@@ -1,124 +1,128 @@
+/**
+ * Admin Login — `Dashboard figma design/App Admin Panel.svg`.
+ *
+ * Centred card on the #F5F7F6 page fill with a square logo placeholder above
+ * the heading. The CTA and the Forgot Password link carry the brand gradient.
+ * "Remember Me" is a plain label in the frame, so it has no checkbox.
+ */
 import { useState } from 'react';
-import { useDispatch } from 'react-redux';
-import { Link, useNavigate } from 'react-router-dom';
+import type { FormEvent } from 'react';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 import { Eye, EyeOff } from 'lucide-react';
 import { useAdminLoginMutation } from '../app/api/apiSlice';
 import { setCredentials } from '../app/authSlice';
+import type { RootState } from '../app/store';
 
-/** Figma "Admin Login" screen — wired to POST /auth/admin/login. */
 export default function Login() {
-  const navigate = useNavigate();
   const dispatch = useDispatch();
-  const [adminLogin, { isLoading }] = useAdminLoginMutation();
+  const navigate = useNavigate();
+  const accessToken = useSelector((state: RootState) => state.auth.accessToken);
 
   const [email, setEmail] = useState('admin@contenthub.io');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [adminLogin, { isLoading }] = useAdminLoginMutation();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  if (accessToken) return <Navigate to="/dashboard" replace />;
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
     setError(null);
     try {
-      const res = await adminLogin({ email, password, rememberMe }).unwrap();
-      dispatch(
-        setCredentials({
-          accessToken: res.data.accessToken,
-          refreshToken: res.data.refreshToken,
-          user: res.data.user,
-        }),
-      );
+      const result = await adminLogin({ email, password, rememberMe }).unwrap();
+      dispatch(setCredentials(result.data));
       navigate('/dashboard');
-    } catch (err) {
-      const message =
-        (err as { data?: { message?: string } })?.data?.message ??
-        'Invalid email or password';
-      setError(message);
+    } catch {
+      setError('Invalid email or password.');
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-page px-4">
-      <div className="w-full max-w-md">
-        <div className="rounded-2xl bg-card p-8 shadow-sm">
-          <div className="mb-6 flex flex-col items-center text-center">
-            <img src="/Logo 1 (1) 1.png" alt="Joinly" className="mb-4 h-10 w-auto" />
-            <h1 className="font-heading text-2xl font-bold text-login-ink">Admin Login</h1>
-            <p className="mt-1 text-sm text-login-muted">Sign in to Joinly Admin Panel</p>
+    <div className="grid min-h-screen place-items-center bg-page px-4">
+      <div className="w-full max-w-[418px]">
+        <form
+          onSubmit={handleSubmit}
+          noValidate
+          className="rounded-2xl bg-card px-10 py-9 shadow-[0_1px_3px_rgba(0,0,0,0.06)]"
+        >
+          <div className="flex flex-col items-center">
+            {/* The frame draws an empty placeholder here; swap in the Arooby
+                mark when there is one. */}
+            <div aria-hidden className="size-[52px] rounded-lg bg-[#f5f5f5]" />
+            <h1 className="mt-4 text-[22px] font-bold text-[#111827]">Admin Login</h1>
+            <p className="mt-1 text-sm text-muted">Sign in to Arooby</p>
           </div>
 
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            {error && (
-              <div className="rounded-lg bg-danger-bg px-3.5 py-2.5 text-sm font-medium text-danger-text">
-                {error}
-              </div>
-            )}
-
+          <div className="mt-7 space-y-4">
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-login-ink" htmlFor="email">
+              <label htmlFor="email" className="block text-sm font-medium text-[#111827]">
                 Email Address
               </label>
               <input
                 id="email"
                 type="email"
-                required
+                autoComplete="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-lg border border-line px-3.5 py-2.5 text-sm text-login-ink outline-none focus:border-primary"
+                onChange={(event) => setEmail(event.target.value)}
+                className="mt-1.5 h-11 w-full rounded-lg border border-line bg-card px-4 text-sm text-body outline-none focus:border-brand"
               />
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-login-ink" htmlFor="password">
+              <label htmlFor="password" className="block text-sm font-medium text-[#111827]">
                 Password
               </label>
-              <div className="flex items-center rounded-lg border border-line px-3.5 py-2.5 focus-within:border-primary">
+              <div className="relative mt-1.5">
                 <input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
-                  required
+                  autoComplete="current-password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(event) => setPassword(event.target.value)}
                   placeholder="Enter your password"
-                  className="w-full bg-transparent text-sm text-login-ink outline-none placeholder:text-login-muted"
+                  className="h-11 w-full rounded-lg border border-line bg-card pr-11 pl-4 text-sm text-body outline-none placeholder:text-muted focus:border-brand"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="text-login-muted"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute top-1/2 right-3 -translate-y-1/2 text-muted"
                 >
                   {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
                 </button>
               </div>
             </div>
 
-            <div className="flex items-center justify-between text-sm">
-              <label className="flex items-center gap-2 text-login-muted">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="h-4 w-4 rounded border-line accent-[color:var(--color-primary)]"
-                />
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                aria-pressed={rememberMe}
+                onClick={() => setRememberMe((prev) => !prev)}
+                className={`text-sm ${rememberMe ? 'font-medium text-brand' : 'text-body'}`}
+              >
                 Remember Me
-              </label>
-              <Link to="/forgot-password" className="font-semibold text-primary hover:underline">
+              </button>
+              <Link to="/forgot-password" className="text-sm text-brand">
                 Forgot Password?
               </Link>
             </div>
 
+            {error && <p className="text-sm text-danger">{error}</p>}
+
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full rounded-lg bg-primary py-2.5 text-sm font-bold text-white transition-colors hover:bg-primary-dark disabled:opacity-60"
+              className="bg-brand-gradient h-11 w-full rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
             >
               {isLoading ? 'Signing in…' : 'Login'}
             </button>
-          </form>
-        </div>
+          </div>
+        </form>
 
-        <p className="mt-5 text-center text-xs text-login-muted">· Admin Panel v2.1</p>
+        <p className="mt-4 text-center text-xs text-muted">· Admin Panel v2.1</p>
       </div>
     </div>
   );

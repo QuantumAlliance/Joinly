@@ -1,50 +1,115 @@
 @import 'tailwindcss';
 
-/* Palette matched pixel-by-pixel against the exported screens in "dashboard figma/" */
+/*
+ * Design tokens measured out of the vector fills and gradient stops in
+ * `../Dashboard figma design/*.svg` — the current Figma export.
+ *
+ * NOTE: `senior-connect-dashboard/dashboard figma/*.png` is a STALE all-green
+ * export of the same layouts. Do not colour-match against it.
+ *
+ * The design is deliberately two-toned:
+ *   BLUE  app chrome — wordmark, page titles, active nav, dashboard widgets,
+ *         links, and the login CTA. Always the #1A9BFE → #2178FC gradient or
+ *         its flat midpoint.
+ *   GREEN content actions and statuses — table buttons, pagination, status
+ *         pills, counts, tabs.
+ */
 @theme {
-  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-heading: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
 
-  --color-primary: #1f7a4d; /* buttons, active nav, page title accent */
-  --color-primary-dark: #145c3a; /* hover state */
-  --color-primary-soft: #eef2ee; /* active nav row bg */
-  --color-page: #eef2ee; /* app background */
+  /* --- surfaces --- */
+  --color-page: #f5f7f6;
+  --color-topbar: #f8faf8;
   --color-card: #ffffff;
-  --color-line: #e6eae6; /* borders / dividers */
-  --color-line-strong: #d7ddd7;
-  --color-table-head: #eef1ee; /* table header band */
+  --color-sidebar: #ffffff;
 
-  --color-ink: #16241b; /* headings, stat numbers */
-  --color-body: #374151; /* table cell text */
-  --color-muted: #6b7280; /* secondary text, icons */
-  --color-label: #6b7280; /* uppercase small labels */
+  /* --- lines --- */
+  --color-line: #e4e8e5; /* card border, topbar + sidebar rules */
+  --color-field: #bfc9be; /* input / pagination / outlined-control border */
+  --color-track: #eceeec; /* donut track, avatar ring, search pill */
 
-  --color-success: #1f7a4d;
-  --color-success-bg: #dcf1e2; /* Active / Delivered pill bg */
-  --color-success-text: #1f7a4d;
+  /* --- blue: chrome, nav, dashboard widgets, links --- */
+  --color-brand: #1e86fd; /* flat midpoint of the gradient — icons, labels, links */
+  --color-brand-tint: #d9eeff; /* stat tiles, View All, dashboard status pills */
+  --color-nav-bg: #e0f1ff; /* active nav row fill */
+  --color-nav-idle: #7f8982; /* inactive nav label + icon */
 
-  --color-neutral-bg: #eef1ee; /* Inactive pill bg */
-  --color-neutral-text: #4b5563;
+  /* --- green: content actions and statuses --- */
+  --color-action: #0b6438; /* filled buttons, pagination chip, counts, tabs */
+  --color-action-hover: #095029;
+  --color-accent: #2e7d4f; /* status dots, photo border, status text */
+  --color-ok-bg: #c0efbc; /* Active pill / Filter button */
+  --color-ok-fg: #456e46;
+  --color-soft-bg: #eaf2ed; /* compose tile, interest chip */
 
-  --color-pending-bg: #fdecd2; /* PENDING pill bg */
-  --color-pending-text: #b7791f;
+  /* --- ink --- */
+  --color-ink: #1a2e22;
+  --color-ink-strong: #1a1a1a;
+  --color-body: #3f4941;
+  --color-muted: #5f6b63;
+  --color-label: #64746b;
 
-  --color-danger: #dc2626;
-  --color-danger-bg: #fde3e2; /* Suspend / Rejected pill bg */
-  --color-danger-text: #dc2626;
-  --color-danger-solid: #e0433a; /* ACTION REQUIRED solid pill */
+  /* --- status --- */
+  --color-warn-bg: #ffdad6; /* Pending pill */
+  --color-warn-fg: #ba1a1a;
+  --color-danger: #ff5c5c;
+  --color-danger-solid: #e53e3e; /* ACTION REQUIRED chip */
+  --color-tag-bg: #e6e9e7; /* category tag chip */
+  --color-head-bg: #f2f4f2; /* table header band, highlight tiles */
 
-  --color-login-ink: #111827;
-  --color-login-muted: #6b7280;
+  /* Activity-card chips. */
+  --color-chip-pending-bg: #fdf3eb;
+  --color-chip-pending-fg: #ed8936;
+  --color-chip-active-bg: #e6efeb;
+  --color-chip-active-fg: #14a15b;
+  --color-chip-rejected-bg: #ffebeb;
+  --color-chip-rejected-fg: #ff4c4c;
+  --color-reject-bg: #f8e8e8;
+  --color-reject-fg: #ba1a1a;
+
+  /* --- shape --- */
+  --radius-card: 20px;
+  --radius-field: 12px;
+  --shadow-card: 0 4px 20px rgba(46, 125, 79, 0.05);
+}
+
+/* The brand gradient, verbatim from the Figma stops. */
+:root {
+  --gradient-brand: linear-gradient(180deg, #1a9bfe 0%, #2178fc 100%);
+}
+
+html {
+  background-color: var(--color-page);
 }
 
 body {
+  margin: 0;
   font-family: var(--font-sans);
+  color: var(--color-ink-strong);
   background-color: var(--color-page);
-  color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-h1, h2, h3, .font-heading {
-  font-family: var(--font-heading);
+h1, h2, h3 {
+  letter-spacing: -0.01em;
+}
+
+/** Solid fill — login CTA, active nav accent bar. */
+.bg-brand-gradient {
+  background-image: var(--gradient-brand);
+}
+
+/** Gradient-filled text — the wordmark and blue page titles. */
+.text-brand-gradient {
+  background-image: var(--gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
 }

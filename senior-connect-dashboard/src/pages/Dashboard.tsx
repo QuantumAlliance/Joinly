@@ -1,6 +1,14 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Calendar, Check, ChevronRight, Clapperboard, ClipboardList, Eye, Users as UsersIcon, X } from 'lucide-react';
+/**
+ * Dashboard — `Dashboard figma design/Dashboard.svg`
+ * (+ Dashboard-1.svg for the long Recent Activities table).
+ *
+ * Layout as drawn in the 1280px frame: three 304×146 stat cards, then a
+ * 304 / 632 split holding the donut and Recent Users at a matched 466px, then
+ * the full-width Recent Activities table.
+ */
+import { Link } from 'react-router-dom';
+import { CalendarDays, CalendarX2, Check, ChevronRight, Eye, Users2, X } from 'lucide-react';
+import type { ComponentType } from 'react';
 import {
   useGetCategoryDistributionQuery,
   useGetRecentActivitiesQuery,
@@ -8,346 +16,324 @@ import {
   useGetStatisticsQuery,
   useUpdateActivityStatusMutation,
 } from '../app/api/apiSlice';
-import ActivityQuickViewModal, { type ActivityQuickViewData } from '../components/ActivityQuickViewModal';
+import type { CategoryDistributionRow } from '../app/api/types';
 import Avatar from '../components/Avatar';
+import ApiError from '../components/ApiError';
 import Card from '../components/Card';
-import PageHeader from '../components/PageHeader';
-import StatusBadge from '../components/StatusBadge';
+import StatusBadge, { Tag } from '../components/StatusBadge';
+import Thumb from '../components/Thumb';
+import { useTopbar } from '../layouts/topbar';
+import { formatDate } from '../lib/format';
 
-/**
- * Figma "Dashboard" screen:
- * TOTAL USERS | TOTAL ACTIVITIES | PENDING APPROVALS (ACTION REQUIRED)
- * Category Distribution (single-arc donut) | Recent Users | Recent Activities
- * All figures come live from GET /dashboard/*.
- */
+/** Legend swatch colours, in the frame's order: brand blue, deep green, near-black. */
+const SLICE_COLORS = ['#1e86fd', '#3f6840', '#1a1a1a'];
 
-/** Distinct, high-contrast palette so each category reads clearly even with a dozen+ rows. */
-const CATEGORY_PALETTE = [
-  '#1f7a4d', '#2f9e6b', '#c98a1f', '#b5502e', '#3a6bb0',
-  '#7a4fb5', '#c14f7c', '#4f9ab5', '#8a9e2f', '#6b6b6b',
-  '#1f5c7a', '#a1622f', '#4f7a5c',
-];
-const colorFor = (index: number): string => CATEGORY_PALETTE[index % CATEGORY_PALETTE.length];
+/** Recent Users initials circles alternate mint / pale blue down the column. */
+const AVATAR_TINTS = ['bg-[#d9e6da]', 'bg-brand-tint'];
 
-function DistributionDonut({ slices }: { slices: { categoryName: string; percentage: number }[] }) {
-  const radius = 15.9155;
-  const circumference = 2 * Math.PI * radius;
-  let cumulative = 0;
+// ------------------------------------------------------------------ pieces
+
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  tone = 'brand',
+  badge,
+}: {
+  label: string;
+  value: string;
+  icon: ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  tone?: 'brand' | 'alert';
+  badge?: string;
+}) {
   return (
-    <svg viewBox="0 0 36 36" className="h-36 w-36 -rotate-90">
-      <circle cx="18" cy="18" r={radius} fill="transparent" stroke="#e6eae6" strokeWidth="4.5" />
-      {slices.map((slice, i) => {
-        const dash = (slice.percentage / 100) * circumference;
-        const offset = -((cumulative / 100) * circumference);
-        cumulative += slice.percentage;
-        return (
-          <circle
-            key={slice.categoryName}
-            cx="18"
-            cy="18"
-            r={radius}
-            fill="transparent"
-            stroke={colorFor(i)}
-            strokeWidth="4.5"
-            strokeDasharray={`${dash} ${circumference - dash}`}
-            strokeDashoffset={offset}
-          />
-        );
-      })}
-    </svg>
+    <Card className="flex h-[146px] flex-col justify-between p-6">
+      <div className="flex items-start justify-between gap-3">
+        <span className="max-w-[120px] text-xs font-medium tracking-[0.06em] text-muted uppercase">
+          {label}
+        </span>
+        <span
+          className={`grid size-10 shrink-0 place-items-center rounded-xl ${
+            tone === 'alert' ? 'bg-warn-bg text-warn-fg' : 'bg-brand-tint text-brand'
+          }`}
+        >
+          <Icon size={20} strokeWidth={1.75} />
+        </span>
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="text-[38px] leading-none font-bold text-ink-strong">{value}</span>
+        {badge && (
+          <span className="rounded-full bg-danger-solid px-2.5 py-1 text-[10px] font-bold tracking-[0.04em] text-white uppercase">
+            {badge}
+          </span>
+        )}
+      </div>
+    </Card>
   );
 }
 
-function DistributionBar({ categoryName, percentage, color }: { categoryName: string; percentage: number; color: string }) {
+/**
+ * Donut for the category split.
+ *
+ * Geometry is taken from the frame: a #ECEEEC track ring at r=90 with the
+ * coloured arcs drawn *inside* it at r=78, which is what gives the chart its
+ * halo. The frame itself only draws the leading share; this renders every
+ * slice so the ring agrees with the legend beneath it.
+ */
+function Donut({ slices }: { slices: CategoryDistributionRow[] }) {
+  const TRACK_RADIUS = 90;
+  const ARC_RADIUS = 78;
+  const CIRCUMFERENCE = 2 * Math.PI * ARC_RADIUS;
+  const lead = slices[0];
+  let offset = 0;
+
   return (
-    <div>
-      <div className="mb-1 flex items-center justify-between text-xs">
-        <span className="flex items-center gap-1.5 font-medium text-body">
-          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-          {categoryName}
-        </span>
-        <span className="font-semibold text-ink">{percentage}%</span>
-      </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-bg">
-        <div
-          className="h-full rounded-full transition-all"
-          style={{ width: `${Math.max(percentage, 2)}%`, backgroundColor: color }}
+    <div className="relative grid size-[192px] place-items-center">
+      <svg viewBox="0 0 192 192" className="size-full -rotate-90">
+        <circle
+          cx="96"
+          cy="96"
+          r={TRACK_RADIUS}
+          fill="none"
+          stroke="var(--color-track)"
+          strokeWidth="12"
         />
-      </div>
+        {slices.map((slice, i) => {
+          const length = (slice.percentage / 100) * CIRCUMFERENCE;
+          const element = (
+            <circle
+              key={slice.categoryName}
+              cx="96"
+              cy="96"
+              r={ARC_RADIUS}
+              fill="none"
+              stroke={SLICE_COLORS[i % SLICE_COLORS.length]}
+              strokeWidth="12"
+              strokeDasharray={`${length} ${CIRCUMFERENCE - length}`}
+              strokeDashoffset={-offset}
+            />
+          );
+          offset += length;
+          return element;
+        })}
+      </svg>
+      {lead && (
+        <div className="absolute text-center">
+          <div className="text-[26px] leading-tight font-bold text-brand">{lead.percentage}%</div>
+          <div className="text-sm text-muted">{lead.categoryName.split(' ')[0]}</div>
+        </div>
+      )}
     </div>
   );
 }
 
-function ActivityThumb({ src, size = 44 }: { src: string | null; size?: number }) {
-  if (src) {
-    return (
-      <img
-        src={src}
-        alt=""
-        style={{ width: size, height: size }}
-        className="shrink-0 rounded-lg object-cover"
-      />
-    );
-  }
+function SectionHead({
+  title,
+  subtitle,
+  viewAllTo,
+}: {
+  title: string;
+  subtitle: string;
+  viewAllTo?: string;
+}) {
   return (
-    <span
-      style={{ width: size, height: size }}
-      className="flex shrink-0 items-center justify-center rounded-lg bg-neutral-bg text-neutral-text"
-    >
-      <Clapperboard size={size * 0.45} />
-    </span>
+    <div className="flex items-start justify-between gap-4">
+      <div>
+        <h2 className="text-xl font-bold text-ink-strong">{title}</h2>
+        <p className="mt-1 text-sm text-muted">{subtitle}</p>
+      </div>
+      {viewAllTo && (
+        <Link
+          to={viewAllTo}
+          className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-brand-tint px-4 text-sm font-medium text-brand"
+        >
+          View All
+          <ChevronRight size={15} />
+        </Link>
+      )}
+    </div>
   );
 }
 
-export default function Dashboard() {
-  const navigate = useNavigate();
-  const [quickViewActivity, setQuickViewActivity] = useState<ActivityQuickViewData | null>(null);
+const TH = 'pb-3 text-left text-sm font-normal text-muted';
 
-  const { data: statsData, isLoading: statsLoading } = useGetStatisticsQuery();
-  const { data: distributionData } = useGetCategoryDistributionQuery();
-  const { data: usersData, isLoading: usersLoading } = useGetRecentUsersQuery({ limit: 5 });
-  const { data: activitiesData, isLoading: activitiesLoading } = useGetRecentActivitiesQuery({ limit: 5 });
+// ------------------------------------------------------------------- page
+
+export default function Dashboard() {
+  useTopbar({ title: 'Dashboard' });
+
+  const { data: stats, isError: statsError, refetch: refetchStats } = useGetStatisticsQuery();
+  const { data: distribution } = useGetCategoryDistributionQuery();
+  const { data: recentUsers } = useGetRecentUsersQuery({ limit: 4 });
+  const { data: recentActivities } = useGetRecentActivitiesQuery({ limit: 8 });
   const [updateActivityStatus] = useUpdateActivityStatusMutation();
 
-  const stats = statsData?.data;
-  const distribution = distributionData?.data ?? [];
-  const recentUsers = usersData?.data ?? [];
-  const recentActivities = activitiesData?.data ?? [];
+  const slices = distribution?.data ?? [];
 
   return (
-    <div>
-      <PageHeader title="Dashboard" showSearch showBell />
+    <div className="space-y-6">
+      {statsError && <ApiError what="the dashboard" onRetry={() => refetchStats()} />}
 
-      <div className="space-y-6">
-        {/* Statistic Cards Grid */}
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-          <Card className="p-6">
-            <div className="flex items-start justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wide text-label">Total Users</p>
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-success-bg text-success">
-                <UsersIcon size={18} />
-              </span>
-            </div>
-            <p className="mt-3 font-heading text-3xl font-bold text-ink">
-              {statsLoading ? '—' : (stats?.totalUsers ?? 0).toLocaleString()}
-            </p>
-          </Card>
+      {/* Stat row */}
+      <div className="grid grid-cols-3 gap-6">
+        <StatCard
+          label="Total Users"
+          value={(stats?.data.totalUsers ?? 0).toLocaleString()}
+          icon={Users2}
+        />
+        <StatCard
+          label="Total Activities"
+          value={(stats?.data.totalActivities ?? 0).toLocaleString()}
+          icon={CalendarDays}
+        />
+        <StatCard
+          label="Pending Approvals"
+          value={(stats?.data.pendingApprovals ?? 0).toLocaleString()}
+          icon={CalendarX2}
+          tone="alert"
+          // Only shout when something actually needs the admin: the badge used to
+          // show "Action required" beside a count of zero.
+          badge={(stats?.data.pendingApprovals ?? 0) > 0 ? 'Action required' : undefined}
+        />
+      </div>
 
-          <Card className="p-6">
-            <div className="flex items-start justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wide text-label">Total Activities</p>
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-success-bg text-success">
-                <Calendar size={18} />
-              </span>
-            </div>
-            <p className="mt-3 font-heading text-3xl font-bold text-ink">
-              {statsLoading ? '—' : (stats?.totalActivities ?? 0).toLocaleString()}
-            </p>
-          </Card>
+      {/* Donut + Recent Users, matched heights */}
+      <div className="grid grid-cols-[304px_1fr] gap-6">
+        <Card className="flex h-[466px] flex-col">
+          <h2 className="text-xl font-bold text-ink-strong">Category Distribution</h2>
+          <p className="mt-1 text-sm text-muted">Activity breakdown across the community.</p>
 
-          <Card className="p-6">
-            <div className="flex items-start justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wide text-label">Pending Approvals</p>
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-danger-bg text-danger">
-                <ClipboardList size={18} />
-              </span>
-            </div>
-            <div className="mt-3 flex items-center gap-3">
-              <p className="font-heading text-3xl font-bold text-ink">
-                {statsLoading ? '—' : (stats?.pendingApprovals ?? 0).toLocaleString()}
-              </p>
-              {!statsLoading && (stats?.pendingApprovals ?? 0) > 0 && (
-                <span className="rounded-full bg-danger-solid px-2.5 py-1 text-[11px] font-bold text-white">
-                  ACTION REQUIRED
-                </span>
-              )}
-            </div>
-          </Card>
-        </div>
+          <div className="flex flex-1 items-center justify-center">
+            <Donut slices={slices} />
+          </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* Category Distribution */}
-          <Card className="p-6 lg:col-span-1">
-            <h2 className="font-heading text-lg font-semibold text-ink">Category Distribution</h2>
-            <p className="mt-1 text-sm text-muted">Activity breakdown across the community.</p>
-            {distribution.length > 0 ? (
-              <>
-                <div className="mt-5 flex justify-center">
-                  <DistributionDonut slices={distribution} />
-                </div>
-                <div className="mt-6 max-h-64 space-y-3.5 overflow-y-auto pr-1">
-                  {distribution.map((slice, i) => (
-                    <DistributionBar
-                      key={slice.categoryName}
-                      categoryName={slice.categoryName}
-                      percentage={slice.percentage}
-                      color={colorFor(i)}
-                    />
-                  ))}
-                </div>
-              </>
-            ) : (
-              <p className="mt-10 text-center text-sm text-muted">No approved activities yet.</p>
-            )}
-          </Card>
+          <ul className="space-y-3">
+            {slices.map((slice, i) => (
+              <li key={slice.categoryName} className="flex items-center gap-2.5 text-sm">
+                <span
+                  className="size-3 shrink-0 rounded-full"
+                  style={{ backgroundColor: SLICE_COLORS[i % SLICE_COLORS.length] }}
+                />
+                <span className="text-body">{slice.categoryName}</span>
+                <span className="ml-auto font-bold text-ink-strong">{slice.percentage}%</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
 
-          {/* Recent Users */}
-          <Card className="lg:col-span-2">
-            <div className="flex items-center justify-between px-6 pt-6">
-              <div>
-                <h2 className="font-heading text-lg font-semibold text-ink">Recent Users</h2>
-                <p className="mt-1 text-sm text-muted">New members who joined in the last 24 hours.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => navigate('/users')}
-                className="flex items-center gap-1 rounded-full bg-success-bg px-4 py-2 text-sm font-semibold text-success-text hover:bg-success-bg/70"
-              >
-                View All
-                <ChevronRight size={14} />
-              </button>
-            </div>
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="text-sm font-semibold text-body">
-                    <th className="px-6 pb-3 font-semibold">User</th>
-                    <th className="px-6 pb-3 font-semibold">Date Joined</th>
-                    <th className="px-6 pb-3 font-semibold">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {!usersLoading && recentUsers.length === 0 && (
-                    <tr>
-                      <td colSpan={3} className="px-6 py-8 text-center text-sm text-muted">
-                        No new members in the last 24 hours.
-                      </td>
-                    </tr>
-                  )}
-                  {recentUsers.map((user) => (
-                    <tr key={user.id} className="border-t border-line">
-                      <td className="flex items-center gap-3 px-6 py-3.5">
-                        <Avatar src={user.profilePhoto} name={`${user.firstName} ${user.lastName}`} size={36} />
-                        <div>
-                          <p className="font-semibold text-ink">
-                            {user.firstName} {user.lastName}
-                          </p>
-                          <p className="text-xs text-muted">{user.email}</p>
+        <Card className="flex h-[466px] flex-col">
+          <SectionHead
+            title="Recent Users"
+            subtitle="New members who joined in the last 24 hours."
+            viewAllTo="/users"
+          />
+
+          <table className="mt-5 w-full border-collapse">
+            <thead>
+              <tr className="border-b border-line">
+                <th className={TH}>User</th>
+                <th className={TH}>Type</th>
+                <th className={TH}>Date Joined</th>
+                <th className={`${TH} text-right`}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(recentUsers?.data ?? []).map((user, i) => (
+                <tr key={user.id} className="border-b border-line last:border-0">
+                  <td className="py-3.5">
+                    <div className="flex items-center gap-3">
+                      <Avatar
+                        firstName={user.firstName}
+                        lastName={user.lastName}
+                        size={36}
+                        tintClass={AVATAR_TINTS[i % AVATAR_TINTS.length]}
+                      />
+                      <div className="leading-tight">
+                        <div className="text-base text-ink-strong">
+                          {user.firstName} {user.lastName}
                         </div>
-                      </td>
-                      <td className="px-6 py-3.5 text-body">
-                        {new Date(user.dateJoined).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: '2-digit',
-                          year: 'numeric',
-                        })}
-                      </td>
-                      <td className="px-6 py-3.5">
-                        <StatusBadge status={user.status} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </div>
-
-        {/* Recent Activities */}
-        <Card>
-          <div className="flex items-center justify-between px-6 pt-6">
-            <div>
-              <h2 className="font-heading text-lg font-semibold text-ink">Recent Activities</h2>
-              <p className="mt-1 text-sm text-muted">Latest events scheduled across the network.</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate('/activities')}
-              className="flex items-center gap-1 rounded-full bg-success-bg px-4 py-2 text-sm font-semibold text-success-text hover:bg-success-bg/70"
-            >
-              View All
-              <ChevronRight size={14} />
-            </button>
-          </div>
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="text-sm font-semibold text-body">
-                  <th className="px-6 pb-3 font-semibold">Activity Name</th>
-                  <th className="px-6 pb-3 font-semibold">Location</th>
-                  <th className="px-6 pb-3 font-semibold">Category</th>
-                  <th className="px-6 pb-3 font-semibold">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {!activitiesLoading && recentActivities.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-6 py-8 text-center text-sm text-muted">
-                      No activities have been created yet.
-                    </td>
-                  </tr>
-                )}
-                {recentActivities.map((activity) => (
-                  <tr key={activity.id} className="border-t border-line">
-                    <td className="flex items-center gap-3 px-6 py-3.5">
-                      <ActivityThumb src={activity.activityPhoto} />
-                      <span className="font-semibold text-ink">{activity.activityName}</span>
-                    </td>
-                    <td className="px-6 py-3.5 text-body">{activity.activityLocation}</td>
-                    <td className="px-6 py-3.5">
-                      <span className="rounded-md bg-neutral-bg px-2.5 py-1 text-xs font-semibold text-neutral-text">
-                        {activity.categoryName}
-                      </span>
-                    </td>
-                    <td className="px-6 py-3.5">
-                      <div className="flex items-center gap-3">
-                        {activity.status === 'Pending' && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => updateActivityStatus({ id: activity.id, status: 'Approved' })}
-                              className="text-success"
-                              title="Approve"
-                            >
-                              <Check size={17} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateActivityStatus({ id: activity.id, status: 'Rejected' })}
-                              className="text-danger"
-                              title="Reject"
-                            >
-                              <X size={17} />
-                            </button>
-                          </>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setQuickViewActivity({
-                              id: activity.id,
-                              activityName: activity.activityName,
-                              category: activity.categoryName,
-                              location: activity.activityLocation,
-                              thumbnail: activity.activityPhoto ?? undefined,
-                            })
-                          }
-                          className="text-success"
-                          title="View"
-                        >
-                          <Eye size={17} />
-                        </button>
+                        <div className="text-xs text-muted">{user.email}</div>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+                  </td>
+                  <td className="text-base text-ink-strong">{user.type ?? 'Senior Member'}</td>
+                  <td className="text-base text-muted">{formatDate(user.dateJoined)}</td>
+                  <td className="text-right">
+                    {/* Blue on the dashboard; the Users table uses the green pill. */}
+                    <StatusBadge status={user.status} variant="plain" tone="brand" />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </Card>
       </div>
 
-      <ActivityQuickViewModal activity={quickViewActivity} onClose={() => setQuickViewActivity(null)} />
+      {/* Recent Activities */}
+      <Card>
+        <SectionHead
+          title="Recent Activities"
+          subtitle="Latest events scheduled across the network."
+          viewAllTo="/activities"
+        />
+
+        <table className="mt-5 w-full border-collapse">
+          <thead>
+            <tr className="border-b border-line">
+              <th className={TH}>Activity Name</th>
+              <th className={TH}>Location</th>
+              <th className={TH}>Category</th>
+              <th className={TH}>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(recentActivities?.data ?? []).map((activity) => (
+              <tr key={activity.id} className="border-b border-line last:border-0">
+                <td className="py-4">
+                  <div className="flex items-center gap-4">
+                    <Thumb
+                      src={activity.activityPhoto}
+                      className="size-11 shrink-0 rounded-lg"
+                    />
+                    <span className="text-base text-ink-strong">{activity.activityName}</span>
+                  </div>
+                </td>
+                <td className="text-base text-muted">{activity.activityLocation}</td>
+                <td>
+                  <Tag>{activity.categoryName}</Tag>
+                </td>
+                <td>
+                  <div className="flex items-center gap-4">
+                    <button
+                      type="button"
+                      aria-label={`Approve ${activity.activityName}`}
+                      onClick={() => updateActivityStatus({ id: activity.id, status: 'Approved' })}
+                      className="text-accent"
+                    >
+                      <Check size={18} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Reject ${activity.activityName}`}
+                      onClick={() => updateActivityStatus({ id: activity.id, status: 'Rejected' })}
+                      className="text-danger"
+                    >
+                      <X size={18} />
+                    </button>
+                    <Link
+                      to={`/activities/${activity.id}`}
+                      aria-label={`View ${activity.activityName}`}
+                      className="text-accent"
+                    >
+                      <Eye size={18} />
+                    </Link>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
     </div>
   );
 }

@@ -1,198 +1,236 @@
+/**
+ * Users — `Dashboard figma design/Users.svg` and `Users-7.svg`.
+ *
+ * 447×48 search field beside a mint Filter button, then a 960px table card:
+ * 90px header, 80px rows with 46px ringed avatars, and a footer carrying the
+ * row count and the `‹ 1 2 3 … 58 ›` pager.
+ */
 import { useEffect, useRef, useState } from 'react';
-import { Filter, Search, ShieldCheck, ShieldOff, Eye } from 'lucide-react';
-import { useGetUsersQuery, useUpdateUserStatusMutation, type UserStatus } from '../app/api/apiSlice';
+import { Link } from 'react-router-dom';
+import { Check, Eye, ListFilter, Search, ShieldBan, ShieldCheck, X } from 'lucide-react';
+import { useGetUsersQuery, useUpdateUserStatusMutation } from '../app/api/apiSlice';
+import type { AdminUserRow } from '../app/api/types';
+import ApiError from '../components/ApiError';
 import Avatar from '../components/Avatar';
-import Card from '../components/Card';
 import Pagination from '../components/Pagination';
-import PageHeader from '../components/PageHeader';
 import StatusBadge from '../components/StatusBadge';
-import UserQuickViewModal, { type UserQuickViewData } from '../components/UserQuickViewModal';
+import { useTopbar } from '../layouts/topbar';
 
 const PAGE_SIZE = 10;
-const STATUS_OPTIONS: { label: string; value: UserStatus | '' }[] = [
-  { label: 'All statuses', value: '' },
-  { label: 'Active', value: 'Active' },
-  { label: 'Inactive', value: 'Inactive' },
-  { label: 'Suspended', value: 'Suspended' },
-  { label: 'Blocked', value: 'Blocked' },
-];
 
-/**
- * Figma "Users" screen:
- * Search by name, email or country... | Filter |
- * USER PROFILE | EMAIL ADDRESS | COUNTRY | ACTIVITIES | STATUS | ACTIONS |
- * Wired to GET /users/admin/users.
- */
-export default function Users() {
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<UserStatus | ''>('');
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [quickViewUser, setQuickViewUser] = useState<UserQuickViewData | null>(null);
-  const filterRef = useRef<HTMLDivElement>(null);
+/** The three options drawn in `Frame 2147230321.svg`. */
+const FILTERS = [
+  { value: '', label: 'All Users' },
+  { value: 'active', label: 'Active Users' },
+  { value: 'blocked', label: 'Blocked Users' },
+] as const;
+
+const TH = 'px-0 pb-4 text-left align-top text-xs font-medium tracking-[0.04em] text-muted uppercase';
+
+function FilterMenu({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const onClickOutside = (e: MouseEvent) => {
-      if (filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false);
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false);
     };
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, []);
-
-  const { data, isLoading, isFetching } = useGetUsersQuery({
-    page,
-    limit: PAGE_SIZE,
-    search: search || undefined,
-    status: status || undefined,
-  });
-  const [updateUserStatus] = useUpdateUserStatusMutation();
-
-  const users = data?.data ?? [];
-  const meta = data?.meta;
-  const totalPages = meta?.totalPages ?? 1;
-  const total = meta?.total ?? 0;
-  const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const rangeEnd = Math.min(page * PAGE_SIZE, total);
-
-  const toggleBlock = (userId: string, currentStatus: UserStatus) => {
-    const nextStatus: UserStatus = currentStatus === 'Blocked' ? 'Active' : 'Blocked';
-    updateUserStatus({ userId, status: nextStatus });
-  };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
 
   return (
-    <div>
-      <PageHeader title="Users" showSearch showBell />
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((prev) => !prev)}
+        className="inline-flex h-12 w-[104px] items-center justify-center gap-2 rounded-field bg-ok-bg text-base font-medium text-ok-fg"
+      >
+        <ListFilter size={18} />
+        Filter
+      </button>
 
-      <div className="mb-5 flex items-center gap-3">
-        <label className="flex flex-1 items-center gap-2 rounded-full bg-white px-4 py-2.5 ring-1 ring-line">
-          <Search size={16} className="text-muted" />
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 z-20 mt-2 w-[200px] overflow-hidden rounded-field border border-line bg-card shadow-card"
+        >
+          {FILTERS.map((filter) => (
+            <button
+              key={filter.value}
+              type="button"
+              role="menuitemradio"
+              aria-checked={value === filter.value}
+              onClick={() => {
+                onChange(filter.value);
+                setOpen(false);
+              }}
+              className={`block w-full border-b border-line px-4 py-3 text-center text-sm last:border-0 hover:bg-head-bg ${
+                value === filter.value ? 'font-medium text-action' : 'text-body'
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RowActions({ user, onStatus }: { user: AdminUserRow; onStatus: (status: AdminUserRow['status']) => void }) {
+  const blocked = user.status === 'Blocked' || user.status === 'Suspended';
+
+  return (
+    <div className="flex items-center justify-end gap-4">
+      {user.status === 'Pending' ? (
+        <>
+          <button type="button" aria-label="Approve user" onClick={() => onStatus('Active')} className="text-accent">
+            <Check size={18} />
+          </button>
+          <button type="button" aria-label="Reject user" onClick={() => onStatus('Blocked')} className="text-danger">
+            <X size={18} />
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          aria-label={blocked ? 'Unblock user' : 'Block user'}
+          onClick={() => onStatus(blocked ? 'Active' : 'Blocked')}
+          className={blocked ? 'text-accent' : 'text-danger'}
+        >
+          {blocked ? <ShieldCheck size={18} /> : <ShieldBan size={18} />}
+        </button>
+      )}
+      <Link to={`/users/${user.id}`} aria-label={`View ${user.firstName} ${user.lastName}`} className="text-accent">
+        <Eye size={18} />
+      </Link>
+    </div>
+  );
+}
+
+export default function UsersPage() {
+  useTopbar({ title: 'Users' });
+
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [tab, setTab] = useState('');
+  const [updateUserStatus] = useUpdateUserStatusMutation();
+
+  const { data, isError, refetch } = useGetUsersQuery({ page, limit: PAGE_SIZE, search: search || undefined, tab: tab || undefined });
+  const users = data?.data ?? [];
+  const meta = data?.meta;
+
+  const resetTo = (apply: () => void) => {
+    apply();
+    setPage(1);
+  };
+
+  const from = meta ? (meta.page - 1) * meta.limit + 1 : 0;
+  const to = meta ? Math.min(meta.page * meta.limit, meta.total) : 0;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-4">
+        <label className="relative block w-[447px]">
+          <Search size={18} className="absolute top-1/2 left-4 -translate-y-1/2 text-muted" />
           <input
-            type="text"
             value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
+            onChange={(event) => resetTo(() => setSearch(event.target.value))}
             placeholder="Search by name, email or country..."
-            className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-muted"
+            aria-label="Search users"
+            className="h-12 w-full rounded-field border border-field bg-card pr-4 pl-11 text-base text-body outline-none placeholder:text-muted focus:border-brand"
           />
         </label>
-        <div ref={filterRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setFilterOpen((v) => !v)}
-            className="flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-dark"
-          >
-            <Filter size={15} />
-            Filter
-          </button>
-          {filterOpen && (
-            <div className="absolute right-0 top-full z-40 mt-2 w-48 rounded-2xl border border-line bg-card p-2 shadow-xl">
-              {STATUS_OPTIONS.map((opt) => (
-                <button
-                  key={opt.label}
-                  type="button"
-                  onClick={() => {
-                    setStatus(opt.value);
-                    setPage(1);
-                    setFilterOpen(false);
-                  }}
-                  className={`flex w-full items-center rounded-xl px-3 py-2 text-sm font-medium hover:bg-page ${
-                    status === opt.value ? 'text-primary' : 'text-body'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="ml-auto">
+          <FilterMenu value={tab} onChange={(next) => resetTo(() => setTab(next))} />
         </div>
       </div>
 
-      <Card>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-line text-xs font-bold uppercase tracking-wide text-label">
-                <th className="px-6 py-4 font-bold">User Profile</th>
-                <th className="px-6 py-4 font-bold">Email Address</th>
-                <th className="px-6 py-4 font-bold">Country</th>
-                <th className="px-6 py-4 font-bold">Activities</th>
-                <th className="px-6 py-4 font-bold">Status</th>
-                <th className="px-6 py-4 font-bold">Actions</th>
+      <section className="overflow-hidden rounded-card border border-field/30 bg-card shadow-card">
+        <table className="w-full table-fixed border-collapse">
+          {/* Column widths taken off the Users frame. Inline styles rather than
+              utility classes so `table-fixed` reliably honours them. */}
+          <colgroup>
+            <col style={{ width: 166 }} />
+            <col style={{ width: 260 }} />
+            <col style={{ width: 134 }} />
+            <col style={{ width: 141 }} />
+            <col style={{ width: 159 }} />
+            <col />
+          </colgroup>
+          <thead>
+            <tr>
+              <th className={`${TH} pt-11 pl-6`}>
+                User
+                <br />
+                Profile
+              </th>
+              <th className={`${TH} pt-11`}>Email Address</th>
+              <th className={`${TH} pt-11`}>Country</th>
+              <th className={`${TH} pt-11`}>Activities</th>
+              <th className={`${TH} pt-11`}>Status</th>
+              <th className={`${TH} pt-11 pr-6 text-right`}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isError && (
+              <tr>
+                <td colSpan={6}>
+                  <ApiError what="users" onRetry={() => refetch()} />
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {!isLoading && users.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-sm text-muted">
-                    No users found.
-                  </td>
-                </tr>
-              )}
-              {users.map((user) => {
-                const name = `${user.firstName} ${user.lastName}`;
-                return (
-                  <tr key={user.id} className="border-b border-line last:border-0">
-                    <td className="flex items-center gap-3 px-6 py-3.5">
-                      <Avatar src={user.profilePhoto} name={name} size={40} />
-                      <span className="font-semibold text-ink">{name}</span>
-                    </td>
-                    <td className="px-6 py-3.5 text-body">{user.email}</td>
-                    <td className="px-6 py-3.5 text-body">{user.country ?? '—'}</td>
-                    <td className="px-6 py-3.5 text-body">{user.activities}</td>
-                    <td className="px-6 py-3.5">
-                      <StatusBadge status={user.status} />
-                    </td>
-                    <td className="px-6 py-3.5">
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => toggleBlock(user.id, user.status)}
-                          className={user.status === 'Blocked' ? 'text-success' : 'text-danger'}
-                          title={user.status === 'Blocked' ? 'Unblock user' : 'Block user'}
-                        >
-                          {user.status === 'Blocked' ? <ShieldCheck size={17} /> : <ShieldOff size={17} />}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setQuickViewUser({
-                              id: user.id,
-                              name,
-                              email: user.email,
-                              country: user.country,
-                              activities: user.activities,
-                              status: user.status,
-                              profilePhoto: user.profilePhoto,
-                            })
-                          }
-                          className="text-success"
-                          title="View"
-                        >
-                          <Eye size={17} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <Pagination
-          summary={
-            isFetching
-              ? 'Loading…'
-              : `Showing ${rangeStart} to ${rangeEnd} of ${total} user${total === 1 ? '' : 's'}`
-          }
-          page={page}
-          totalPages={totalPages}
-          onPageChange={setPage}
-        />
-      </Card>
+            )}
+            {!isError && users.length === 0 && (
+              <tr>
+                <td colSpan={6} className="py-12 text-center text-sm text-muted">
+                  No users match this view.
+                </td>
+              </tr>
+            )}
+            {users.map((user) => (
+              <tr key={user.id} className="h-20 border-t border-line">
+                <td className="pl-6">
+                  <div className="flex items-center gap-3">
+                    <Avatar
+                      src={user.profilePhoto}
+                      firstName={user.firstName}
+                      lastName={user.lastName}
+                      size={46}
+                      ring
+                    />
+                    <span className="text-base text-body">
+                      {user.firstName} {user.lastName}
+                    </span>
+                  </div>
+                </td>
+                <td className="text-base text-body">{user.email}</td>
+                <td className="text-base text-body">{user.country ?? '—'}</td>
+                <td className="text-base font-medium text-action">{user.activities}</td>
+                <td>
+                  <StatusBadge status={user.status} />
+                </td>
+                <td className="pr-6">
+                  <RowActions
+                    user={user}
+                    onStatus={(status) => updateUserStatus({ userId: user.id, status })}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
 
-      <UserQuickViewModal user={quickViewUser} onClose={() => setQuickViewUser(null)} />
+        <div className="flex items-center justify-between border-t border-line px-6 py-3.5">
+          <p className="text-sm text-muted">
+            Showing {from} to {to} of {meta?.total ?? 0} users
+          </p>
+          <Pagination page={page} totalPages={meta?.totalPages ?? 1} onChange={setPage} />
+        </div>
+      </section>
     </div>
   );
 }

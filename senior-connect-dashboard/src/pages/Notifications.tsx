@@ -1,271 +1,210 @@
-import { useEffect, useRef, useState } from 'react';
-import { Download, Filter, Send } from 'lucide-react';
-import {
-  useComposeNotificationMutation,
-  useGetNotificationsQuery,
-  type Audience,
-  type NotificationStatus,
-} from '../app/api/apiSlice';
+/**
+ * Notifications — `Dashboard figma design/Users-3.svg`.
+ *
+ * Compose card (title + message + send, no audience selector — the frame has
+ * none, so everything goes out to Everyone) above the history table.
+ */
+import { useState } from 'react';
+import type { FormEvent } from 'react';
+import { Download, ListFilter, Send } from 'lucide-react';
+import { useComposeNotificationMutation, useGetNotificationsQuery } from '../app/api/apiSlice';
+import ApiError from '../components/ApiError';
 import Card from '../components/Card';
 import Pagination from '../components/Pagination';
-import PageHeader from '../components/PageHeader';
+import StatusBadge from '../components/StatusBadge';
+import { useTopbar } from '../layouts/topbar';
+import { formatDate } from '../lib/format';
 
-/**
- * Figma "Notifications" screen — Communication Hub / Notification Management:
- * Compose Notification (Title, Message Content, Send Notification) |
- * Notification History (SUBJECT, AUDIENCE, SENT DATE, STATUS)
- * Wired to GET/POST /notifications/admin/notifications.
- */
-const audiences: Audience[] = ['Everyone', 'Seniors', 'Volunteers'];
-const STATUS_OPTIONS: { label: string; value: NotificationStatus | '' }[] = [
-  { label: 'All statuses', value: '' },
-  { label: 'Delivered', value: 'Delivered' },
-  { label: 'Failed', value: 'Failed' },
-];
 const PAGE_SIZE = 5;
-
-function downloadCsv(rows: { notificationTitle: string; audience: string; sentDate: string; status: string }[]) {
-  const header = ['Subject', 'Audience', 'Sent Date', 'Status'];
-  const lines = rows.map((r) => [r.notificationTitle, r.audience, r.sentDate, r.status].map((v) => `"${v}"`).join(','));
-  const csv = [header.join(','), ...lines].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'notification-history.csv';
-  a.click();
-  URL.revokeObjectURL(url);
-}
+const FIELD =
+  'w-full rounded-field border border-line bg-card px-4 text-base text-body outline-none placeholder:text-muted focus:border-brand';
 
 export default function Notifications() {
-  const [title, setTitle] = useState('');
-  const [message, setMessage] = useState('');
-  const [audience, setAudience] = useState<Audience>('Everyone');
-  const [formError, setFormError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  useTopbar({ title: 'Notifications', variant: 'plain' });
 
+  const [notificationTitle, setNotificationTitle] = useState('');
+  const [messageContent, setMessageContent] = useState('');
+  const [feedback, setFeedback] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   const [page, setPage] = useState(1);
-  const [status, setStatus] = useState<NotificationStatus | ''>('');
-  const [filterOpen, setFilterOpen] = useState(false);
-  const filterRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const onClickOutside = (e: MouseEvent) => {
-      if (filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false);
-    };
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, []);
+  const { data, isError, refetch } = useGetNotificationsQuery({ page, limit: PAGE_SIZE });
+  const [composeNotification, { isLoading }] = useComposeNotificationMutation();
 
-  const { data, isLoading, isFetching } = useGetNotificationsQuery({
-    page,
-    limit: PAGE_SIZE,
-    status: status || undefined,
-  });
-  const [composeNotification, { isLoading: isSending }] = useComposeNotificationMutation();
-
-  const history = data?.data ?? [];
+  const rows = data?.data ?? [];
   const meta = data?.meta;
-  const totalPages = meta?.totalPages ?? 1;
-  const total = meta?.total ?? 0;
-  const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const rangeEnd = Math.min(page * PAGE_SIZE, total);
 
-  const handleSend = async () => {
-    if (!title.trim() || !message.trim()) {
-      setFormError('Notification Title and Message Content are required.');
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!notificationTitle.trim() || !messageContent.trim()) {
+      setFeedback({ tone: 'error', text: 'Add a title and a message before sending.' });
       return;
     }
-    setFormError(null);
     try {
-      const res = await composeNotification({
-        notificationTitle: title.trim(),
-        messageContent: message.trim(),
-        audience,
+      // The frame has no audience control; everything is broadcast.
+      await composeNotification({
+        notificationTitle: notificationTitle.trim(),
+        messageContent: messageContent.trim(),
+        audience: 'Everyone',
       }).unwrap();
-      setTitle('');
-      setMessage('');
-      setSuccessMessage(
-        res.data.status === 'Delivered' ? 'Notification sent successfully.' : 'Notification failed to send.',
-      );
-      setTimeout(() => setSuccessMessage(null), 4000);
-    } catch (err) {
-      setFormError((err as { data?: { message?: string } })?.data?.message ?? 'Failed to send notification');
+      setNotificationTitle('');
+      setMessageContent('');
+      setPage(1);
+      setFeedback({ tone: 'ok', text: 'Notification sent.' });
+    } catch {
+      setFeedback({ tone: 'error', text: 'Could not send the notification.' });
     }
   };
 
   return (
-    <div>
-      <PageHeader title="Notifications" />
+    <div className="space-y-6">
+      <div>
+        <p className="text-xs font-medium tracking-[0.08em] text-label uppercase">Communication Hub</p>
+        <h2 className="mt-1 text-[35px] leading-tight font-bold text-ink">Notification Management</h2>
+      </div>
 
-      <p className="text-xs font-semibold uppercase tracking-wide text-label">Communication Hub</p>
-      <h2 className="mb-5 font-heading text-2xl font-bold text-ink">Notification Management</h2>
-
-      <Card className="mb-6 p-6">
+      <Card>
         <div className="flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-success-bg text-success">
-            <Send size={16} />
+          <span className="grid size-10 place-items-center rounded-full bg-ok-bg text-ok-fg">
+            <Send size={18} />
           </span>
-          <h3 className="font-heading text-base font-bold text-ink">Compose Notification</h3>
+          <h3 className="text-xl font-bold text-ink-strong">Compose Notification</h3>
         </div>
 
-        <div className="mt-5 space-y-4">
-          {formError && (
-            <div className="rounded-lg bg-danger-bg px-3.5 py-2.5 text-sm font-medium text-danger-text">
-              {formError}
-            </div>
-          )}
-          {successMessage && (
-            <div className="rounded-lg bg-success-bg px-3.5 py-2.5 text-sm font-medium text-success-text">
-              {successMessage}
-            </div>
-          )}
+        <form onSubmit={handleSubmit} className="mt-6 space-y-4" noValidate>
           <div>
-            <label className="mb-1.5 block text-sm font-semibold text-ink" htmlFor="notif-title">
+            <label htmlFor="notificationTitle" className="block text-sm font-medium text-ink-strong">
               Notification Title
             </label>
             <input
-              id="notif-title"
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              id="notificationTitle"
+              value={notificationTitle}
+              onChange={(event) => setNotificationTitle(event.target.value)}
               placeholder="e.g. Community Garden Workshop"
-              className="w-full rounded-lg border border-line px-3.5 py-2.5 text-sm text-ink outline-none placeholder:text-muted focus:border-primary"
+              className={`${FIELD} mt-2 h-12`}
             />
           </div>
+
           <div>
-            <label className="mb-1.5 block text-sm font-semibold text-ink" htmlFor="notif-message">
+            <label htmlFor="messageContent" className="block text-sm font-medium text-ink-strong">
               Message Content
             </label>
             <textarea
-              id="notif-message"
+              id="messageContent"
               rows={4}
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              value={messageContent}
+              onChange={(event) => setMessageContent(event.target.value)}
               placeholder="Share details about the event or update..."
-              className="w-full rounded-lg border border-line px-3.5 py-2.5 text-sm text-ink outline-none placeholder:text-muted focus:border-primary"
+              className={`${FIELD} mt-2 resize-none py-3`}
             />
           </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-semibold text-ink">Audience</label>
-            <div className="flex gap-2">
-              {audiences.map((a) => (
-                <button
-                  key={a}
-                  type="button"
-                  onClick={() => setAudience(a)}
-                  className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-                    audience === a ? 'bg-primary text-white' : 'bg-page text-body'
-                  }`}
-                >
-                  {a}
-                </button>
-              ))}
-            </div>
-          </div>
+
+          {feedback && (
+            <p className={`text-sm ${feedback.tone === 'ok' ? 'text-action' : 'text-danger'}`}>
+              {feedback.text}
+            </p>
+          )}
+
           <button
-            type="button"
-            onClick={handleSend}
-            disabled={isSending}
-            className="rounded-lg bg-primary px-6 py-2.5 text-sm font-bold text-white hover:bg-primary-dark disabled:opacity-60"
+            type="submit"
+            disabled={isLoading}
+            className="h-12 rounded-full bg-action px-7 text-base font-medium text-white hover:bg-action-hover disabled:opacity-60"
           >
-            {isSending ? 'Sending…' : 'Send Notification'}
+            {isLoading ? 'Sending…' : 'Send Notification'}
           </button>
-        </div>
+        </form>
       </Card>
 
-      <Card>
-        <div className="flex items-center justify-between px-6 pt-6">
-          <h3 className="font-heading text-base font-bold text-ink">Notification History</h3>
-          <div className="flex items-center gap-3 text-muted">
-            <div ref={filterRef} className="relative">
-              <button type="button" onClick={() => setFilterOpen((v) => !v)} title="Filter by status">
-                <Filter size={17} />
-              </button>
-              {filterOpen && (
-                <div className="absolute right-0 top-full z-40 mt-2 w-44 rounded-2xl border border-line bg-card p-2 shadow-xl">
-                  {STATUS_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.label}
-                      type="button"
-                      onClick={() => {
-                        setStatus(opt.value);
-                        setPage(1);
-                        setFilterOpen(false);
-                      }}
-                      className={`flex w-full items-center rounded-xl px-3 py-2 text-sm font-medium hover:bg-page ${
-                        status === opt.value ? 'text-primary' : 'text-body'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button type="button" onClick={() => downloadCsv(history)} title="Download CSV">
-              <Download size={17} />
+      <Card padded={false}>
+        <div className="flex items-center justify-between gap-4 p-6">
+          <h3 className="text-xl font-bold text-ink-strong">Notification History</h3>
+          <div className="flex items-center gap-4 text-muted">
+            <button type="button" aria-label="Filter history">
+              <ListFilter size={20} />
+            </button>
+            <button type="button" aria-label="Export history">
+              <Download size={20} />
             </button>
           </div>
         </div>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="bg-table-head text-xs font-bold uppercase tracking-wide text-label">
-                <th className="px-6 py-3.5 font-bold">Subject</th>
-                <th className="px-6 py-3.5 font-bold">Audience</th>
-                <th className="px-6 py-3.5 font-bold">Sent Date</th>
-                <th className="px-6 py-3.5 font-bold">Status</th>
+
+        <table className="w-full table-fixed border-collapse">
+          <colgroup>
+            <col className="w-[45%]" />
+            <col className="w-[18%]" />
+            <col className="w-[17%]" />
+            <col />
+          </colgroup>
+          <thead className="bg-head-bg text-xs font-medium tracking-[0.04em] text-muted uppercase">
+            <tr>
+              <th className="py-4 pl-6 text-left font-medium">Subject</th>
+              <th className="text-left font-medium">Audience</th>
+              <th className="text-left font-medium">Sent Date</th>
+              <th className="pr-6 text-left font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isError && (
+              <tr>
+                <td colSpan={5}>
+                  <ApiError what="the notification history" onRetry={() => refetch()} />
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {!isLoading && history.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-6 py-10 text-center text-sm text-muted">
-                    No notifications sent yet.
-                  </td>
-                </tr>
-              )}
-              {history.map((n) => (
-                <tr key={n.id} className="border-b border-line last:border-0">
-                  <td className="px-6 py-4">
-                    <p className="font-semibold text-ink">{n.notificationTitle}</p>
-                    <p className="line-clamp-1 text-xs text-muted">{n.messageContent}</p>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="rounded-full bg-success-bg px-3 py-1 text-xs font-semibold text-success-text">
-                      {n.audience}
+            )}
+            {!isError && rows.length === 0 && (
+              <tr>
+                <td colSpan={5} className="py-12 text-center text-sm text-muted">
+                  Nothing has been sent yet.
+                </td>
+              </tr>
+            )}
+            {rows.map((row) => (
+              <tr key={row.id} className="border-t border-line">
+                <td className="py-4 pl-6">
+                  <div className="text-base font-medium text-ink-strong">{row.notificationTitle}</div>
+                  <div className="mt-0.5 line-clamp-2 text-sm text-muted">{row.messageContent}</div>
+                </td>
+                <td>
+                  {/*
+                    An Interests broadcast names the categories it targeted;
+                    rendering the bare word "Interests" would tell the admin
+                    nothing about who actually received it.
+                  */}
+                  {row.audience === 'Everyone' || row.audienceCategories.length === 0 ? (
+                    <span className="inline-flex items-center rounded-full bg-ok-bg px-2.5 py-[3px] text-xs font-medium text-ok-fg">
+                      {row.audience === 'Everyone' ? 'Everyone' : 'No matching interests'}
                     </span>
-                  </td>
-                  <td className="px-6 py-4 text-body">
-                    {new Date(n.sentDate).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: '2-digit',
-                      year: 'numeric',
-                    })}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`flex items-center gap-1.5 ${n.status === 'Delivered' ? 'text-success-text' : 'text-danger'}`}
-                    >
-                      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                      {n.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <Pagination
-          summary={
-            isFetching ? 'Loading…' : `Showing ${rangeStart} to ${rangeEnd} of ${total} notifications`
-          }
-          page={page}
-          totalPages={totalPages}
-          onPageChange={setPage}
-        />
+                  ) : (
+                    <div className="flex flex-wrap gap-1">
+                      {row.audienceCategories.map((category) => (
+                        <span
+                          key={category.id}
+                          className="inline-flex items-center rounded-full bg-ok-bg px-2.5 py-[3px] text-xs font-medium text-ok-fg"
+                        >
+                          {category.categoryName}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-1 text-xs text-muted">
+                    {row.recipientCount} {row.recipientCount === 1 ? 'recipient' : 'recipients'}
+                  </div>
+                </td>
+                <td className="text-base text-body">{formatDate(row.sentDate)}</td>
+                <td className="pr-6">
+                  <StatusBadge status={row.status} variant="text" />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </Card>
+
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted">
+          Showing {rows.length} of {meta?.total ?? 0} notifications
+        </p>
+        <Pagination page={page} totalPages={meta?.totalPages ?? 1} onChange={setPage} />
+      </div>
     </div>
   );
 }

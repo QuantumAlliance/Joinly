@@ -3,218 +3,110 @@
  *
  * Endpoints mirror senior-connect-api exactly — same routes, same
  * Figma-derived field names, same `{ success, message, data, meta? }` envelope.
- * Types mirror the backend's *.interface.ts files 1:1.
+ * Wire types live in ./types and are re-exported here so pages can keep
+ * importing them from the slice.
+ *
+ * When VITE_USE_MOCKS is not "false" the slice talks to the in-memory backend
+ * in src/mocks instead of the network — see mockBaseQuery.
  */
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+import type { BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import type { RootState } from '../store';
 import type { AuthUser } from '../authSlice';
+import { logout, setAccessToken } from '../authSlice';
+import { USE_MOCKS, mockBaseQuery } from '../../mocks/mockBaseQuery';
+import type {
+  ActivityCard,
+  ActivityDetails,
+  AdminCategoryRow,
+  AdminCategoryStats,
+  AdminUserDetails,
+  AdminUserRow,
+  ApiEnvelope,
+  AppPreferences,
+  Audience,
+  CategoryDistributionRow,
+  CategoryItem,
+  CategoryStatus,
+  ContactInfo,
+  DashboardStatistics,
+  MyProfile,
+  NotificationRow,
+  RefreshedTokens,
+  RecentActivityRow,
+  RecentUserRow,
+  UploadResult,
+  UserStatus,
+} from './types';
 
-export interface ApiEnvelope<T> {
-  success: boolean;
-  message: string;
-  data: T;
-  meta?: { page: number; limit: number; total: number; totalPages: number };
-}
+export * from './types';
 
-export type UserStatus = 'Pending' | 'Active' | 'Inactive' | 'Suspended' | 'Blocked';
-export type ActivityStatus = 'Draft' | 'Pending' | 'Approved' | 'Rejected' | 'Cancelled' | 'Completed';
-export type CategoryStatus = 'Active' | 'Disabled';
-export type NotificationStatus = 'Delivered' | 'Failed';
-export type Audience = 'Everyone' | 'Seniors' | 'Volunteers';
-export type Difficulty = 'Beginner' | 'Intermediate' | 'Advanced';
+const liveBaseQuery = fetchBaseQuery({
+  baseUrl: import.meta.env.VITE_API_URL ?? 'http://localhost:5000/api/v1',
+  prepareHeaders: (headers, { getState }) => {
+    const token = (getState() as RootState).auth.accessToken;
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    return headers;
+  },
+});
 
-export interface CategoryItem {
-  id: string;
-  categoryName: string;
-  status: CategoryStatus;
-}
+/**
+ * Access tokens expire (JWT_ACCESS_EXPIRES_IN, 1d by default) while the refresh
+ * token is good for thirty. On a 401 we spend the refresh token once and replay
+ * the request that failed; if that fails too the session really is over and we
+ * log out, which sends ProtectedRoute back to /login.
+ *
+ * `refreshPromise` makes it single-flight: a dashboard screen fires four queries
+ * at once, and without it each one would burn its own refresh.
+ */
+let refreshPromise: Promise<string | null> | null = null;
 
-export interface AdminCategoryRow extends CategoryItem {
-  activityCount: number;
-}
+const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> = async (
+  args,
+  api,
+  extraOptions,
+) => {
+  let result = await liveBaseQuery(args, api, extraOptions);
+  if (result.error?.status !== 401) return result;
 
-export interface AdminCategoryStats {
-  totalCategories: number;
-  activeNow: number;
-}
+  const state = api.getState() as RootState;
+  const refreshToken = state.auth.refreshToken;
+  const url = typeof args === 'string' ? args : args.url;
+  // The login endpoints answer 401 for bad credentials — that is the answer, not
+  // an expired session, and refreshing it would replace a useful error message.
+  if (!refreshToken || url.startsWith('/auth/')) {
+    api.dispatch(logout());
+    return result;
+  }
 
-export interface AdminUserRow {
-  id: string;
-  firstName: string;
-  lastName: string;
-  profilePhoto: string | null;
-  email: string;
-  country: string | null;
-  activities: number;
-  status: UserStatus;
-  dateJoined: string;
-}
+  refreshPromise ??= (async () => {
+    const refreshed = await liveBaseQuery(
+      { url: '/auth/refresh-token', method: 'POST', body: { refreshToken } },
+      api,
+      extraOptions,
+    );
+    const data = (refreshed.data as ApiEnvelope<RefreshedTokens> | undefined)?.data;
+    return data?.accessToken ?? null;
+  })().finally(() => {
+    refreshPromise = null;
+  });
 
-export interface UserInterest {
-  id: string;
-  categoryName: string;
-}
+  const accessToken = await refreshPromise;
+  if (!accessToken) {
+    api.dispatch(logout());
+    return result;
+  }
 
-export interface UserActivityHistoryRow {
-  id: string;
-  activityName: string;
-  categoryName: string;
-  activityDate: string;
-  status: ActivityStatus;
-}
-
-export interface AdminUserDetails {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phoneNumber: string | null;
-  dateOfBirth: string | null;
-  language: string;
-  profilePhoto: string | null;
-  country: string | null;
-  region: string | null;
-  city: string | null;
-  role: string;
-  status: UserStatus;
-  dateFormat: string;
-  notificationSounds: boolean;
-  allowNotifications: boolean;
-  isEmailVerified: boolean;
-  memberSince: string;
-  activityJoined: number;
-  activityCreated: number;
-  connections: number;
-  interests: UserInterest[];
-  activitiesJoined: number;
-  activitiesCreated: number;
-  joinedActivities: UserActivityHistoryRow[];
-  createdActivities: UserActivityHistoryRow[];
-}
-
-export interface ActivityOrganizerBrief {
-  id: string;
-  firstName: string;
-  lastName: string;
-  profilePhoto: string | null;
-}
-
-export interface ActivityCard {
-  id: string;
-  activityName: string;
-  activityPhoto: string | null;
-  categoryName: string;
-  activityDate: string;
-  activityTime: string;
-  activityLocation: string;
-  latitude: number | null;
-  longitude: number | null;
-  participants: string;
-  joinedCount: number;
-  maximumNumberOfParticipants: number;
-  distanceKm: number | null;
-  status: ActivityStatus;
-  organizer: ActivityOrganizerBrief;
-}
-
-export interface ActivityDetails {
-  id: string;
-  activityName: string;
-  activityPhoto: string | null;
-  category: { id: string; categoryName: string };
-  activityDate: string;
-  activityTime: string;
-  activityLocation: string;
-  latitude: number | null;
-  longitude: number | null;
-  distanceKm: number | null;
-  participants: string;
-  joinedCount: number;
-  maximumNumberOfParticipants: number;
-  participantAvatars: (string | null)[];
-  descriptions: string;
-  difficulty: Difficulty;
-  activityEquipment: string | null;
-  activityDuration: string;
-  organizer: {
-    id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    profilePhoto: string | null;
-  };
-  minAge: number;
-  maxAge: number;
-  ageLimit: string;
-  price: number | null;
-  status: ActivityStatus;
-  rejectionReason: string | null;
-  isJoined: boolean;
-  isFavorite: boolean;
-  createdAt: string;
-}
-
-export interface NotificationRow {
-  id: string;
-  notificationTitle: string;
-  messageContent: string;
-  audience: Audience;
-  sentDate: string;
-  status: NotificationStatus;
-}
-
-export interface DashboardStatistics {
-  totalUsers: number;
-  totalActivities: number;
-  totalRegistrations: number;
-  pendingApprovals: number;
-}
-
-export interface CategoryDistributionRow {
-  categoryName: string;
-  activityCount: number;
-  percentage: number;
-}
-
-export interface RecentUserRow {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  profilePhoto: string | null;
-  dateJoined: string;
-  status: UserStatus;
-}
-
-export interface RecentActivityRow {
-  id: string;
-  activityName: string;
-  activityPhoto: string | null;
-  activityLocation: string;
-  categoryName: string;
-  activityDate: string;
-  status: ActivityStatus;
-}
-
-export interface UploadResult {
-  fileName: string;
-  originalName: string;
-  mimeType: string;
-  size: number;
-  url: string;
-}
+  api.dispatch(setAccessToken(accessToken));
+  result = await liveBaseQuery(args, api, extraOptions);
+  if (result.error?.status === 401) api.dispatch(logout());
+  return result;
+};
 
 export const apiSlice = createApi({
   reducerPath: 'api',
-  baseQuery: fetchBaseQuery({
-    baseUrl: import.meta.env.VITE_API_URL ?? 'http://localhost:5000/api/v1',
-    prepareHeaders: (headers, { getState }) => {
-      const token = (getState() as RootState).auth.accessToken;
-      if (token) headers.set('Authorization', `Bearer ${token}`);
-      return headers;
-    },
-  }),
-  tagTypes: ['Dashboard', 'Users', 'User', 'Activities', 'Activity', 'Categories', 'Notifications'],
+  baseQuery: USE_MOCKS ? mockBaseQuery : baseQueryWithReauth,
+  tagTypes: ['Dashboard', 'Users', 'User', 'Activities', 'Activity', 'Categories', 'Notifications', 'Me', 'Contact'],
   endpoints: (builder) => ({
     // ---- Auth ----
     adminLogin: builder.mutation<
@@ -238,9 +130,43 @@ export const apiSlice = createApi({
       query: (formData) => ({ url: '/uploads', method: 'POST', body: formData }),
     }),
 
+    changePassword: builder.mutation<
+      ApiEnvelope<null>,
+      { currentPassword: string; newPassword: string; confirmPassword: string }
+    >({
+      query: (body) => ({ url: '/auth/change-password', method: 'POST', body }),
+    }),
+
     // ---- My profile (works for the logged-in admin too, not role-restricted) ----
+    getMyProfile: builder.query<ApiEnvelope<MyProfile>, void>({
+      query: () => '/users/me',
+      providesTags: ['Me'],
+    }),
+    updateMyProfile: builder.mutation<
+      ApiEnvelope<MyProfile>,
+      { firstName?: string; lastName?: string; dateOfBirth?: string }
+    >({
+      query: (body) => ({ url: '/users/me', method: 'PATCH', body }),
+      invalidatesTags: ['Me'],
+    }),
     updateMyProfilePhoto: builder.mutation<ApiEnvelope<{ profilePhoto: string | null }>, { profilePhoto: string }>({
       query: (body) => ({ url: '/users/me/profile-photo', method: 'PATCH', body }),
+      invalidatesTags: ['Me'],
+    }),
+    // Returns the whole updated user, not just the four preference fields.
+    updateAppPreferences: builder.mutation<ApiEnvelope<MyProfile>, Partial<AppPreferences>>({
+      query: (body) => ({ url: '/users/me/app-preferences', method: 'PATCH', body }),
+      invalidatesTags: ['Me'],
+    }),
+
+    // ---- Support contact (the Contact Us details the mobile app shows) ----
+    getContactInfo: builder.query<ApiEnvelope<ContactInfo>, void>({
+      query: () => '/contact/admin/contact',
+      providesTags: ['Contact'],
+    }),
+    updateContactInfo: builder.mutation<ApiEnvelope<ContactInfo>, { email?: string; phoneNumber?: string }>({
+      query: (body) => ({ url: '/contact/admin/contact', method: 'PATCH', body }),
+      invalidatesTags: ['Contact'],
     }),
 
     // ---- Dashboard ----
@@ -366,7 +292,13 @@ export const {
   useForgotPasswordMutation,
   useResetPasswordMutation,
   useUploadFileMutation,
+  useChangePasswordMutation,
+  useGetMyProfileQuery,
+  useUpdateMyProfileMutation,
   useUpdateMyProfilePhotoMutation,
+  useUpdateAppPreferencesMutation,
+  useGetContactInfoQuery,
+  useUpdateContactInfoMutation,
   useGetStatisticsQuery,
   useGetCategoryDistributionQuery,
   useGetRecentUsersQuery,
