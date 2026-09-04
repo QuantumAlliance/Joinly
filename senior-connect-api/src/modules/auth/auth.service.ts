@@ -5,7 +5,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import * as bcrypt from 'bcryptjs';
 import { FilterQuery, Model } from 'mongoose';
@@ -545,7 +545,9 @@ export class AuthService {
     const accessToken = await this.jwtService.signAsync(payload);
     const refreshToken = await this.jwtService.signAsync(payload, {
       secret: process.env.JWT_REFRESH_SECRET || 'change-me-refresh-secret',
-      expiresIn: refreshExpiry || process.env.JWT_REFRESH_EXPIRES_IN || '30d',
+      expiresIn: (refreshExpiry ||
+        process.env.JWT_REFRESH_EXPIRES_IN ||
+        '30d') as JwtSignOptions['expiresIn'],
     });
     user.refreshToken = await bcrypt.hash(refreshToken, 10);
     return { accessToken, refreshToken };

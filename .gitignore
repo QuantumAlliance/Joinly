@@ -41,6 +41,7 @@ gha-creds-*.json
 secrets/
 *.secrets
 *.private
+temp_auto_push.bat
 
 # ---------------------------------------------------------------------------
 # Tooling state that can contain copies of the repo (and therefore its secrets)
@@ -84,3 +85,4 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+branch_structure.json
