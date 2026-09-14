@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   Param,
-  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -24,6 +23,7 @@ import {
   UpdateProfilePhotoDto,
   UpdateUserStatusDto,
 } from './dto';
+import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 
 @Controller(USERS_ROUTES.ROOT)
 export class UsersController {
@@ -33,6 +33,12 @@ export class UsersController {
   @Get(USERS_ROUTES.ME)
   getMyProfile(@CurrentUser() user: AuthenticatedUser) {
     return this.usersService.getMyProfile(user);
+  }
+
+  /** Mobile — profile completeness ring. Derived; nothing is stored. */
+  @Get(USERS_ROUTES.ME_COMPLETENESS)
+  completeness(@CurrentUser() user: AuthenticatedUser) {
+    return this.usersService.completeness(user);
   }
 
   /** Mobile — Edit Profile Info. */
@@ -81,7 +87,7 @@ export class UsersController {
   @Post(USERS_ROUTES.BLOCK_USER)
   blockUser(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('userId', ParseUUIDPipe) userId: string,
+    @Param('userId', ParseObjectIdPipe) userId: string,
   ) {
     return this.usersService.blockUser(user, userId);
   }
@@ -90,7 +96,7 @@ export class UsersController {
   @Delete(USERS_ROUTES.BLOCK_USER)
   unblockUser(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('userId', ParseUUIDPipe) userId: string,
+    @Param('userId', ParseObjectIdPipe) userId: string,
   ) {
     return this.usersService.unblockUser(user, userId);
   }
@@ -105,7 +111,7 @@ export class UsersController {
   /** Admin — User Details */
   @Roles(UserRole.Admin)
   @Get(USERS_ROUTES.ADMIN_USER_DETAILS)
-  adminUserDetails(@Param('userId', ParseUUIDPipe) userId: string) {
+  adminUserDetails(@Param('userId', ParseObjectIdPipe) userId: string) {
     return this.usersService.adminUserDetails(userId);
   }
 
@@ -113,7 +119,7 @@ export class UsersController {
   @Roles(UserRole.Admin)
   @Patch(USERS_ROUTES.ADMIN_USER_STATUS)
   adminUpdateUserStatus(
-    @Param('userId', ParseUUIDPipe) userId: string,
+    @Param('userId', ParseObjectIdPipe) userId: string,
     @Body() dto: UpdateUserStatusDto,
   ) {
     return this.usersService.adminUpdateUserStatus(userId, dto);

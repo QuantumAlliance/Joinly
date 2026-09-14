@@ -17,12 +17,14 @@ export interface ApiResponse<T = unknown> extends ServiceResponse<T> {
 
 export interface JwtPayload {
   sub: string;
-  email: string;
+  /** Null for an account that registered from a phone number alone. */
+  email: string | null;
   role: string;
 }
 
 export interface AuthenticatedUser {
   userId: string;
-  email: string;
+  /** Null for an account that registered from a phone number alone. */
+  email: string | null;
   role: string;
 }

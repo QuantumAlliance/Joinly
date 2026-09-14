@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { MoreThanOrEqual, Repository } from 'typeorm';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { ActivityStatus, ParticipantStatus, UserRole } from '../../common/enums';
 import { ServiceResponse } from '../../common/interfaces/api-response.interface';
-import { Activity } from '../activities/entities';
-import { Category } from '../categories/entities';
-import { ActivityParticipant } from '../participants/entities';
-import { User } from '../users/entities';
+import { idOf } from '../../common/schema.helpers';
+import { Activity, ActivityDocument } from '../activities/schemas';
+import { Category, CategoryDocument } from '../categories/schemas';
+import { ActivityParticipant, ActivityParticipantDocument } from '../participants/schemas';
+import { User, UserDocument } from '../users/schemas';
 import {
   CategoryDistributionRow,
   DashboardStatistics,
@@ -15,48 +16,55 @@ import {
 } from './interfaces/dashboard.interface';
 import { RecentListDto } from './dto';
 
+/** Recent-list endpoints never return more than this, whatever the caller asks. */
+const MAX_RECENT = 50;
+
 @Injectable()
 export class DashboardService {
   constructor(
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-    @InjectRepository(Activity)
-    private readonly activityRepository: Repository<Activity>,
-    @InjectRepository(ActivityParticipant)
-    private readonly participantRepository: Repository<ActivityParticipant>,
+    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+    @InjectModel(Activity.name) private readonly activityModel: Model<ActivityDocument>,
+    @InjectModel(Category.name) private readonly categoryModel: Model<CategoryDocument>,
+    @InjectModel(ActivityParticipant.name)
+    private readonly participantModel: Model<ActivityParticipantDocument>,
   ) {}
 
   /** Figma stat cards */
   async statistics(): Promise<ServiceResponse<DashboardStatistics>> {
-    const data: DashboardStatistics = {
-      totalUsers: await this.userRepository.count({ where: { role: UserRole.User } }),
-      totalActivities: await this.activityRepository.count(),
-      totalRegistrations: await this.participantRepository.count({
-        where: { status: ParticipantStatus.Joined },
-      }),
-      pendingApprovals: await this.activityRepository.count({
-        where: { status: ActivityStatus.Pending },
-      }),
+    const [totalUsers, totalActivities, totalRegistrations, pendingApprovals] = await Promise.all([
+      this.userModel.countDocuments({ role: UserRole.User }),
+      this.activityModel.countDocuments(),
+      this.participantModel.countDocuments({ status: ParticipantStatus.Joined }),
+      this.activityModel.countDocuments({ status: ActivityStatus.Pending }),
+    ]);
+    return {
+      message: 'Dashboard statistics retrieved successfully',
+      data: { totalUsers, totalActivities, totalRegistrations, pendingApprovals },
     };
-    return { message: 'Dashboard statistics retrieved successfully', data };
   }
 
   /** Figma "Category Distribution — Activity breakdown across the community." */
   async categoryDistribution(): Promise<ServiceResponse<CategoryDistributionRow[]>> {
-    const rows: { categoryName: string; count: string }[] = await this.activityRepository
-      .createQueryBuilder('activity')
-      .innerJoin(Category, 'category', 'category.id = activity.categoryId')
-      .select('category.categoryName', 'categoryName')
-      .addSelect('COUNT(activity.id)', 'count')
-      .groupBy('category.categoryName')
-      .orderBy('count', 'DESC')
-      .getRawMany();
+    const rows = await this.activityModel.aggregate<{ categoryName: string; count: number }>([
+      {
+        $lookup: {
+          from: 'categories',
+          localField: 'categoryId',
+          foreignField: '_id',
+          as: 'category',
+        },
+      },
+      { $unwind: '$category' },
+      { $group: { _id: '$category.categoryName', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $project: { _id: 0, categoryName: '$_id', count: 1 } },
+    ]);
 
-    const total = rows.reduce((sum, row) => sum + Number(row.count), 0);
+    const total = rows.reduce((sum, row) => sum + row.count, 0);
     const data: CategoryDistributionRow[] = rows.map((row) => ({
       categoryName: row.categoryName,
-      activityCount: Number(row.count),
-      percentage: total > 0 ? Math.round((Number(row.count) / total) * 100) : 0,
+      activityCount: row.count,
+      percentage: total > 0 ? Math.round((row.count / total) * 100) : 0,
     }));
     return { message: 'Category distribution retrieved successfully', data };
   }
@@ -64,13 +72,13 @@ export class DashboardService {
   /** Figma "Recent Users — New members who joined in the last 24 hours." */
   async recentUsers(query: RecentListDto): Promise<ServiceResponse<RecentUserRow[]>> {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const users = await this.userRepository.find({
-      where: { role: UserRole.User, createdAt: MoreThanOrEqual(since) },
-      order: { createdAt: 'DESC' },
-      take: Math.min(50, Number(query.limit) || 10),
-    });
+    const users = await this.userModel
+      .find({ role: UserRole.User, createdAt: { $gte: since } })
+      .sort({ createdAt: -1 })
+      .limit(Math.min(MAX_RECENT, Number(query.limit) || 10));
+
     const data: RecentUserRow[] = users.map((user) => ({
-      id: user.id,
+      id: idOf(user),
       firstName: user.firstName,
       lastName: user.lastName,
       email: user.email,
@@ -83,17 +91,22 @@ export class DashboardService {
 
   /** Figma "Recent Activities — Latest events scheduled across the network." */
   async recentActivities(query: RecentListDto): Promise<ServiceResponse<RecentActivityRow[]>> {
-    const activities = await this.activityRepository.find({
-      relations: { category: true },
-      order: { createdAt: 'DESC' },
-      take: Math.min(50, Number(query.limit) || 10),
+    const activities = await this.activityModel
+      .find()
+      .sort({ createdAt: -1 })
+      .limit(Math.min(MAX_RECENT, Number(query.limit) || 10));
+
+    const categories = await this.categoryModel.find({
+      _id: { $in: activities.map((a) => a.categoryId) },
     });
+    const categoryNameById = new Map(categories.map((c) => [idOf(c), c.categoryName]));
+
     const data: RecentActivityRow[] = activities.map((activity) => ({
-      id: activity.id,
+      id: idOf(activity),
       activityName: activity.activityName,
       activityPhoto: activity.activityPhoto,
       activityLocation: activity.activityLocation,
-      categoryName: activity.category?.categoryName ?? '',
+      categoryName: categoryNameById.get(String(activity.categoryId)) ?? '',
       activityDate: activity.activityDate,
       status: activity.status,
     }));

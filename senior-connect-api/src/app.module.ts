@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
-import { JwtModule } from '@nestjs/jwt';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { typeOrmConfig } from './config/typeorm.config';
+import { JwtModule, JwtSignOptions } from '@nestjs/jwt';
+import { MongooseModule } from '@nestjs/mongoose';
+import { mongooseConfig } from './config/mongoose.config';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { AuthModule } from './modules/auth/auth.module';
@@ -21,11 +21,14 @@ import { HealthController } from './health.controller';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    TypeOrmModule.forRootAsync({ useFactory: typeOrmConfig }),
+    MongooseModule.forRootAsync({ useFactory: mongooseConfig }),
     JwtModule.register({
       global: true,
       secret: process.env.JWT_ACCESS_SECRET || 'change-me-access-secret',
-      signOptions: { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '1d' },
+      signOptions: {
+        // @nestjs/jwt v11 types expiresIn as ms.StringValue | number; env vars are plain strings.
+        expiresIn: (process.env.JWT_ACCESS_EXPIRES_IN || '1d') as JwtSignOptions['expiresIn'],
+      },
     }),
     AuthModule,
     UsersModule,

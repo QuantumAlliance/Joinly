@@ -10,6 +10,11 @@ export class UpdateProfileDto {
   @IsString()
   lastName?: string;
 
+  /** Dial code from the phone field's country selector, e.g. "+41". */
+  @IsOptional()
+  @IsString()
+  phoneCountryCode?: string;
+
   @IsOptional()
   @IsString()
   phoneNumber?: string;

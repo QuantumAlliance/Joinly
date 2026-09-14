@@ -1,5 +1,25 @@
 import { ActivityStatus, Difficulty } from '../../../common/enums';
 
+/** Figma Home hero banner — "N activities happening near you today". */
+export interface ActivitySummary {
+  /** The day counted, as an ISO date. */
+  date: string;
+  count: number;
+  /**
+   * Radius the count was taken over, or null when no location was available
+   * and the figure is therefore not "near you" at all — the banner needs to
+   * know the difference before it words itself.
+   */
+  radiusKm: number | null;
+}
+
+/** One row of the search box's autocomplete list. */
+export interface ActivitySuggestion {
+  id: string;
+  activityName: string;
+  categoryName: string;
+}
+
 export interface ActivityCard {
   id: string;
   activityName: string;

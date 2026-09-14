@@ -2,13 +2,22 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as nodemailer from 'nodemailer';
+import { OtpChannel } from '../enums';
+import { OtpTransport } from './otp-transport.interface';
 
 const BRAND_NAME = 'Joinly';
 const LOGO_CID = 'joinly-logo';
 
 @Injectable()
-export class MailService {
+export class MailService implements OtpTransport {
+  readonly channel = OtpChannel.Email;
+
   private readonly logger = new Logger(MailService.name);
+
+  /** `OtpTransport` entry point; email delivery is `sendOtpEmail`. */
+  send(destination: string, otpCode: string, purpose: string): Promise<void> {
+    return this.sendOtpEmail(destination, otpCode, purpose);
+  }
 
   /** Read an env var, accepting either the primary key or any legacy aliases. */
   private env(...keys: string[]): string | undefined {

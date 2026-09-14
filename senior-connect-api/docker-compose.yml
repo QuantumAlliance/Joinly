@@ -1,22 +1,28 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: senior-connect-db
+  mongo:
+    image: mongo:7
+    container_name: arooby-db
     restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${DB_USERNAME:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-      POSTGRES_DB: ${DB_DATABASE:-senior_connect}
+    # Single-node replica set. Mongo only offers multi-document transactions on
+    # a replica set, and the join-activity path needs them; a standalone mongod
+    # would silently degrade that guarantee.
+    command: ['mongod', '--replSet', 'rs0', '--bind_ip_all']
     ports:
-      - '${DB_PORT:-5433}:5432'
+      - '${DB_PORT:-27017}:27017'
     volumes:
-      - senior-connect-db-data:/var/lib/postgresql/data
+      - arooby-db-data:/data/db
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_DATABASE:-senior_connect}']
+      # Initiates the replica set on first boot, then reports healthy once the
+      # node has been elected primary.
+      test: >
+        mongosh --quiet --eval "
+          try { rs.status().ok }
+          catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]}).ok }
+        "
       interval: 5s
-      timeout: 5s
-      retries: 10
+      timeout: 10s
+      retries: 20
+      start_period: 10s
 
 volumes:
-  senior-connect-db-data:
-    name: senior-connect-db-data
+  arooby-db-data:

@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { MongooseModule } from '@nestjs/mongoose';
 import { ContactController } from './contact.controller';
-import { ContactInfo } from './entities';
+import { ContactInfo, ContactInfoSchema } from './schemas';
 import { ContactService } from './contact.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ContactInfo])],
+  imports: [MongooseModule.forFeature([
+      { name: ContactInfo.name, schema: ContactInfoSchema },
+    ])],
   controllers: [ContactController],
   providers: [ContactService],
   exports: [ContactService],

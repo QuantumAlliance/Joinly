@@ -22,24 +22,40 @@ export class JwtAuthGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    if (isPublic) return true;
-
     const request = context.switchToHttp().getRequest<Request>();
     const authHeader = request.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Access token is missing');
+    const token =
+      authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : null;
+
+    // A public route still decodes a token when one is offered, so endpoints
+    // that behave differently for a signed-in caller can see them via
+    // @OptionalUser(). It stays public: a missing or bad token is ignored
+    // here, never rejected.
+    if (isPublic) {
+      if (token) {
+        try {
+          this.attachUser(request, await this.jwtService.verifyAsync<JwtPayload>(token));
+        } catch {
+          // Anonymous is a valid way to call a public route.
+        }
+      }
+      return true;
     }
-    const token = authHeader.slice('Bearer '.length);
+
+    if (!token) throw new UnauthorizedException('Access token is missing');
     try {
-      const payload = await this.jwtService.verifyAsync<JwtPayload>(token);
-      (request as Request & { user: unknown }).user = {
-        userId: payload.sub,
-        email: payload.email,
-        role: payload.role,
-      };
+      this.attachUser(request, await this.jwtService.verifyAsync<JwtPayload>(token));
       return true;
     } catch {
       throw new UnauthorizedException('Invalid or expired access token');
     }
+  }
+
+  private attachUser(request: Request, payload: JwtPayload): void {
+    (request as Request & { user: unknown }).user = {
+      userId: payload.sub,
+      email: payload.email,
+      role: payload.role,
+    };
   }
 }
