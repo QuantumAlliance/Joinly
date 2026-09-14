@@ -13,7 +13,9 @@ import type {
   AdminUserDetails,
   AdminUserRow,
   CategoryDistributionRow,
+  ContactInfo,
   DashboardStatistics,
+  MyProfile,
   NotificationRow,
   RecentActivityRow,
   RecentUserRow,
@@ -327,3 +329,34 @@ export const notifications: NotificationRow[] = Array.from({ length: 124 }, (_, 
     status: (i % 17 === 5 ? 'Failed' : 'Delivered') as NotificationRow['status'],
   };
 });
+
+/**
+ * The signed-in admin, as GET /users/me answers it. Backs the Profile screen
+ * and the preference rows on Settings.
+ */
+export const me: MyProfile = {
+  id: 'admin-1',
+  firstName: 'Admin',
+  lastName: 'User',
+  email: 'admin@contenthub.io',
+  phoneCountryCode: null,
+  phoneNumber: null,
+  dateOfBirth: null,
+  profilePhoto: null,
+  role: 'Admin',
+  status: 'Active',
+  language: 'English (United States)',
+  dateFormat: 'MM/DD/YYYY',
+  notificationSounds: true,
+  allowNotifications: true,
+  memberSince: '2024-01-08T09:00:00.000Z',
+};
+
+/** Support details the mobile app shows on its Contact Us screen. */
+export const contactInfo: ContactInfo = {
+  id: 'contact-1',
+  email: 'support@seniorconnect.io',
+  phoneNumber: '+41 21 555 01 20',
+  createdAt: '2024-01-08T09:00:00.000Z',
+  updatedAt: '2024-01-08T09:00:00.000Z',
+};
