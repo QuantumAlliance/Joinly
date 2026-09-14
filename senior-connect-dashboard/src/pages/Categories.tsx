@@ -7,6 +7,7 @@
  */
 import { useState } from 'react';
 import { useGetCategoriesQuery } from '../app/api/apiSlice';
+import ApiError from '../components/ApiError';
 import CategoriesHeading from '../components/CategoriesChrome';
 import useCategoriesTopbar from '../components/useCategoriesTopbar';
 import Pagination from '../components/Pagination';
@@ -20,7 +21,7 @@ export default function Categories() {
   useCategoriesTopbar();
 
   const [page, setPage] = useState(1);
-  const { data } = useGetCategoriesQuery({ page, limit: PAGE_SIZE });
+  const { data, isError, refetch } = useGetCategoriesQuery({ page, limit: PAGE_SIZE });
 
   const stats = data?.data.stats;
   const categories = data?.data.categories ?? [];
@@ -53,6 +54,20 @@ export default function Categories() {
             </tr>
           </thead>
           <tbody>
+            {isError && (
+              <tr>
+                <td colSpan={3}>
+                  <ApiError what="categories" onRetry={() => refetch()} />
+                </td>
+              </tr>
+            )}
+            {!isError && categories.length === 0 && (
+              <tr>
+                <td colSpan={3} className="py-12 text-center text-sm text-muted">
+                  No categories yet.
+                </td>
+              </tr>
+            )}
             {categories.map((category) => (
               <tr key={category.id} className="h-[73px] border-b border-line last:border-0">
                 <td className="pl-6 text-base text-body">{category.categoryName}</td>

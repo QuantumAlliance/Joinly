@@ -10,8 +10,10 @@
  * in src/mocks instead of the network — see mockBaseQuery.
  */
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+import type { BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import type { RootState } from '../store';
 import type { AuthUser } from '../authSlice';
+import { logout, setAccessToken } from '../authSlice';
 import { USE_MOCKS, mockBaseQuery } from '../../mocks/mockBaseQuery';
 import type {
   ActivityCard,
@@ -21,12 +23,16 @@ import type {
   AdminUserDetails,
   AdminUserRow,
   ApiEnvelope,
+  AppPreferences,
   Audience,
   CategoryDistributionRow,
   CategoryItem,
   CategoryStatus,
+  ContactInfo,
   DashboardStatistics,
+  MyProfile,
   NotificationRow,
+  RefreshedTokens,
   RecentActivityRow,
   RecentUserRow,
   UploadResult,
@@ -44,10 +50,63 @@ const liveBaseQuery = fetchBaseQuery({
   },
 });
 
+/**
+ * Access tokens expire (JWT_ACCESS_EXPIRES_IN, 1d by default) while the refresh
+ * token is good for thirty. On a 401 we spend the refresh token once and replay
+ * the request that failed; if that fails too the session really is over and we
+ * log out, which sends ProtectedRoute back to /login.
+ *
+ * `refreshPromise` makes it single-flight: a dashboard screen fires four queries
+ * at once, and without it each one would burn its own refresh.
+ */
+let refreshPromise: Promise<string | null> | null = null;
+
+const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> = async (
+  args,
+  api,
+  extraOptions,
+) => {
+  let result = await liveBaseQuery(args, api, extraOptions);
+  if (result.error?.status !== 401) return result;
+
+  const state = api.getState() as RootState;
+  const refreshToken = state.auth.refreshToken;
+  const url = typeof args === 'string' ? args : args.url;
+  // The login endpoints answer 401 for bad credentials — that is the answer, not
+  // an expired session, and refreshing it would replace a useful error message.
+  if (!refreshToken || url.startsWith('/auth/')) {
+    api.dispatch(logout());
+    return result;
+  }
+
+  refreshPromise ??= (async () => {
+    const refreshed = await liveBaseQuery(
+      { url: '/auth/refresh-token', method: 'POST', body: { refreshToken } },
+      api,
+      extraOptions,
+    );
+    const data = (refreshed.data as ApiEnvelope<RefreshedTokens> | undefined)?.data;
+    return data?.accessToken ?? null;
+  })().finally(() => {
+    refreshPromise = null;
+  });
+
+  const accessToken = await refreshPromise;
+  if (!accessToken) {
+    api.dispatch(logout());
+    return result;
+  }
+
+  api.dispatch(setAccessToken(accessToken));
+  result = await liveBaseQuery(args, api, extraOptions);
+  if (result.error?.status === 401) api.dispatch(logout());
+  return result;
+};
+
 export const apiSlice = createApi({
   reducerPath: 'api',
-  baseQuery: USE_MOCKS ? mockBaseQuery : liveBaseQuery,
-  tagTypes: ['Dashboard', 'Users', 'User', 'Activities', 'Activity', 'Categories', 'Notifications'],
+  baseQuery: USE_MOCKS ? mockBaseQuery : baseQueryWithReauth,
+  tagTypes: ['Dashboard', 'Users', 'User', 'Activities', 'Activity', 'Categories', 'Notifications', 'Me', 'Contact'],
   endpoints: (builder) => ({
     // ---- Auth ----
     adminLogin: builder.mutation<
@@ -71,9 +130,43 @@ export const apiSlice = createApi({
       query: (formData) => ({ url: '/uploads', method: 'POST', body: formData }),
     }),
 
+    changePassword: builder.mutation<
+      ApiEnvelope<null>,
+      { currentPassword: string; newPassword: string; confirmPassword: string }
+    >({
+      query: (body) => ({ url: '/auth/change-password', method: 'POST', body }),
+    }),
+
     // ---- My profile (works for the logged-in admin too, not role-restricted) ----
+    getMyProfile: builder.query<ApiEnvelope<MyProfile>, void>({
+      query: () => '/users/me',
+      providesTags: ['Me'],
+    }),
+    updateMyProfile: builder.mutation<
+      ApiEnvelope<MyProfile>,
+      { firstName?: string; lastName?: string; dateOfBirth?: string }
+    >({
+      query: (body) => ({ url: '/users/me', method: 'PATCH', body }),
+      invalidatesTags: ['Me'],
+    }),
     updateMyProfilePhoto: builder.mutation<ApiEnvelope<{ profilePhoto: string | null }>, { profilePhoto: string }>({
       query: (body) => ({ url: '/users/me/profile-photo', method: 'PATCH', body }),
+      invalidatesTags: ['Me'],
+    }),
+    // Returns the whole updated user, not just the four preference fields.
+    updateAppPreferences: builder.mutation<ApiEnvelope<MyProfile>, Partial<AppPreferences>>({
+      query: (body) => ({ url: '/users/me/app-preferences', method: 'PATCH', body }),
+      invalidatesTags: ['Me'],
+    }),
+
+    // ---- Support contact (the Contact Us details the mobile app shows) ----
+    getContactInfo: builder.query<ApiEnvelope<ContactInfo>, void>({
+      query: () => '/contact/admin/contact',
+      providesTags: ['Contact'],
+    }),
+    updateContactInfo: builder.mutation<ApiEnvelope<ContactInfo>, { email?: string; phoneNumber?: string }>({
+      query: (body) => ({ url: '/contact/admin/contact', method: 'PATCH', body }),
+      invalidatesTags: ['Contact'],
     }),
 
     // ---- Dashboard ----
@@ -199,7 +292,13 @@ export const {
   useForgotPasswordMutation,
   useResetPasswordMutation,
   useUploadFileMutation,
+  useChangePasswordMutation,
+  useGetMyProfileQuery,
+  useUpdateMyProfileMutation,
   useUpdateMyProfilePhotoMutation,
+  useUpdateAppPreferencesMutation,
+  useGetContactInfoQuery,
+  useUpdateContactInfoMutation,
   useGetStatisticsQuery,
   useGetCategoryDistributionQuery,
   useGetRecentUsersQuery,

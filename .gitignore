@@ -8,8 +8,6 @@
 
 # Environment files. `.env.*` also catches backups such as .env.bak-qa,
 # .env.old and .env.production -- the shape that leaked credentials before.
-.env
-.env.*
 # ...but the committed template, which holds only placeholders, must stay.
 !.env.example
 !.env*.example
@@ -84,3 +82,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+config.bat

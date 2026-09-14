@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom';
 import { Check, Eye, ListFilter, Search, ShieldBan, ShieldCheck, X } from 'lucide-react';
 import { useGetUsersQuery, useUpdateUserStatusMutation } from '../app/api/apiSlice';
 import type { AdminUserRow } from '../app/api/types';
+import ApiError from '../components/ApiError';
 import Avatar from '../components/Avatar';
 import Pagination from '../components/Pagination';
 import StatusBadge from '../components/StatusBadge';
@@ -119,7 +120,7 @@ export default function UsersPage() {
   const [tab, setTab] = useState('');
   const [updateUserStatus] = useUpdateUserStatusMutation();
 
-  const { data } = useGetUsersQuery({ page, limit: PAGE_SIZE, search: search || undefined, tab: tab || undefined });
+  const { data, isError, refetch } = useGetUsersQuery({ page, limit: PAGE_SIZE, search: search || undefined, tab: tab || undefined });
   const users = data?.data ?? [];
   const meta = data?.meta;
 
@@ -176,6 +177,20 @@ export default function UsersPage() {
             </tr>
           </thead>
           <tbody>
+            {isError && (
+              <tr>
+                <td colSpan={6}>
+                  <ApiError what="users" onRetry={() => refetch()} />
+                </td>
+              </tr>
+            )}
+            {!isError && users.length === 0 && (
+              <tr>
+                <td colSpan={6} className="py-12 text-center text-sm text-muted">
+                  No users match this view.
+                </td>
+              </tr>
+            )}
             {users.map((user) => (
               <tr key={user.id} className="h-20 border-t border-line">
                 <td className="pl-6">

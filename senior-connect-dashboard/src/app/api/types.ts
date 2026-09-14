@@ -31,6 +31,48 @@ export interface ApiEnvelope<T> {
   meta?: { page: number; limit: number; total: number; totalPages: number };
 }
 
+/** What POST /auth/refresh-token hands back when the access token has expired. */
+export interface RefreshedTokens {
+  accessToken: string;
+  refreshToken?: string;
+}
+
+/** The signed-in admin's own record — GET /users/me. */
+export interface MyProfile {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phoneCountryCode: string | null;
+  phoneNumber: string | null;
+  dateOfBirth: string | null;
+  profilePhoto: string | null;
+  role: string;
+  status: UserStatus;
+  language: string;
+  dateFormat: string;
+  notificationSounds: boolean;
+  allowNotifications: boolean;
+  memberSince: string;
+}
+
+/** The four fields PATCH /users/me/app-preferences accepts. */
+export interface AppPreferences {
+  language: string;
+  dateFormat: string;
+  notificationSounds: boolean;
+  allowNotifications: boolean;
+}
+
+/** Support details the mobile app shows on its Contact Us screen. */
+export interface ContactInfo {
+  id: string;
+  email: string;
+  phoneNumber: string;
+  updatedAt?: string;
+  createdAt?: string;
+}
+
 export interface CategoryItem {
   id: string;
   categoryName: string;

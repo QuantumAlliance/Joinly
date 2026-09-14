@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test:all": "npm run test:smoke && npm run test:phone && npm run test:home && npm run test:categories && npm run test:moderation && npm run test:completeness && npm run test:targeting && npm run test:race"
+    "typecheck": "tsc -b",
+    "test:all": "npm run typecheck && npm run lint && npm run build"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.12.0",

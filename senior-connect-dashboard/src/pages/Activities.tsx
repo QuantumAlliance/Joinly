@@ -16,6 +16,7 @@ import {
   useUpdateActivityStatusMutation,
 } from '../app/api/apiSlice';
 import type { ActivityCard as ActivityCardType, ActivityStatus } from '../app/api/types';
+import ApiError from '../components/ApiError';
 import Avatar from '../components/Avatar';
 import Thumb from '../components/Thumb';
 import { useTopbar } from '../layouts/topbar';
@@ -137,7 +138,7 @@ export default function Activities() {
   const [page, setPage] = useState(1);
 
   const { data: categories } = useGetActiveCategoriesQuery();
-  const { data } = useGetActivitiesQuery({
+  const { data, isError, refetch } = useGetActivitiesQuery({
     page,
     limit: PAGE_SIZE,
     status,
@@ -195,7 +196,9 @@ export default function Activities() {
         </label>
       </div>
 
-      {activities.length === 0 ? (
+      {isError ? (
+        <ApiError what="activities" onRetry={() => refetch()} />
+      ) : activities.length === 0 ? (
         <p className="py-16 text-center text-sm text-muted">No {status.toLowerCase()} activities.</p>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-6">

@@ -30,6 +30,8 @@ const db = {
   activityDetails: { ...seed.activityDetailsSeed },
   notifications: [...seed.notifications],
   statistics: { ...seed.statistics },
+  me: { ...seed.me },
+  contact: { ...seed.contactInfo },
 };
 
 const LATENCY_MS = 180;
@@ -112,7 +114,53 @@ function route(req: Request): unknown | { error: FetchBaseQueryError } {
     });
   }
   if (url === '/users/me/profile-photo') {
-    return ok({ profilePhoto: String(body.profilePhoto ?? '') }, 'Profile photo updated');
+    db.me = { ...db.me, profilePhoto: String(body.profilePhoto ?? '') };
+    return ok({ profilePhoto: db.me.profilePhoto }, 'Profile photo updated');
+  }
+
+  // --------------------------------------------------- my profile + prefs
+  if (url === '/users/me' && method === 'GET') return ok(db.me);
+  if (url === '/users/me' && method === 'PATCH') {
+    db.me = {
+      ...db.me,
+      ...(body.firstName !== undefined ? { firstName: String(body.firstName) } : {}),
+      ...(body.lastName !== undefined ? { lastName: String(body.lastName) } : {}),
+      ...(body.dateOfBirth !== undefined ? { dateOfBirth: String(body.dateOfBirth) } : {}),
+    };
+    return ok(db.me, 'Profile updated');
+  }
+  if (url === '/users/me/app-preferences') {
+    db.me = {
+      ...db.me,
+      ...(body.language !== undefined ? { language: String(body.language) } : {}),
+      ...(body.dateFormat !== undefined ? { dateFormat: String(body.dateFormat) } : {}),
+      ...(body.notificationSounds !== undefined
+        ? { notificationSounds: Boolean(body.notificationSounds) }
+        : {}),
+      ...(body.allowNotifications !== undefined
+        ? { allowNotifications: Boolean(body.allowNotifications) }
+        : {}),
+    };
+    return ok(db.me, 'Preferences updated');
+  }
+  if (url === '/auth/change-password') {
+    // The seeded admin's password, mirroring what `npm run seed` creates.
+    if (String(body.currentPassword ?? '') !== 'admin123') {
+      return fail(400, 'Current Password is incorrect');
+    }
+    return ok(null, 'Password changed successfully');
+  }
+
+  // ------------------------------------------------------ support contact
+  if (url === '/contact/admin/contact' && method === 'GET') return ok(db.contact);
+  if (url === '/contact/admin/contact' && method === 'PATCH') {
+    db.contact = {
+      ...db.contact,
+      ...(body.email !== undefined ? { email: String(body.email) } : {}),
+      ...(body.phoneNumber !== undefined ? { phoneNumber: String(body.phoneNumber) } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    return ok(db.contact, 'Contact information updated');
   }
 
   // ----------------------------------------------------------- dashboard
@@ -321,10 +369,11 @@ export const mockBaseQuery: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQu
 };
 
 /**
- * Mocks are on by default in `npm run dev` and off in production builds, so the
- * deployed dashboard always talks to the real API. Override either way with
- * VITE_USE_MOCKS=true / VITE_USE_MOCKS=false.
+ * Mocks are strictly opt-in: set VITE_USE_MOCKS=true to run the dashboard with
+ * no API and no database (Figma screenshot diffing). Everything else — plain
+ * `npm run dev` included — talks to VITE_API_URL.
+ *
+ * This used to default to on in dev, which meant the dashboard silently ran
+ * against fake data and every integration bug stayed invisible until deploy.
  */
-export const USE_MOCKS =
-  import.meta.env.VITE_USE_MOCKS === 'true' ||
-  (import.meta.env.DEV && import.meta.env.VITE_USE_MOCKS !== 'false');
+export const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';

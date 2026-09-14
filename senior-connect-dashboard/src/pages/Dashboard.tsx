@@ -18,6 +18,7 @@ import {
 } from '../app/api/apiSlice';
 import type { CategoryDistributionRow } from '../app/api/types';
 import Avatar from '../components/Avatar';
+import ApiError from '../components/ApiError';
 import Card from '../components/Card';
 import StatusBadge, { Tag } from '../components/StatusBadge';
 import Thumb from '../components/Thumb';
@@ -161,7 +162,7 @@ const TH = 'pb-3 text-left text-sm font-normal text-muted';
 export default function Dashboard() {
   useTopbar({ title: 'Dashboard' });
 
-  const { data: stats } = useGetStatisticsQuery();
+  const { data: stats, isError: statsError, refetch: refetchStats } = useGetStatisticsQuery();
   const { data: distribution } = useGetCategoryDistributionQuery();
   const { data: recentUsers } = useGetRecentUsersQuery({ limit: 4 });
   const { data: recentActivities } = useGetRecentActivitiesQuery({ limit: 8 });
@@ -171,6 +172,8 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {statsError && <ApiError what="the dashboard" onRetry={() => refetchStats()} />}
+
       {/* Stat row */}
       <div className="grid grid-cols-3 gap-6">
         <StatCard
@@ -188,7 +191,9 @@ export default function Dashboard() {
           value={(stats?.data.pendingApprovals ?? 0).toLocaleString()}
           icon={CalendarX2}
           tone="alert"
-          badge="Action required"
+          // Only shout when something actually needs the admin: the badge used to
+          // show "Action required" beside a count of zero.
+          badge={(stats?.data.pendingApprovals ?? 0) > 0 ? 'Action required' : undefined}
         />
       </div>
 

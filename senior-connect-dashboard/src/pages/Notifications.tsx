@@ -8,6 +8,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Download, ListFilter, Send } from 'lucide-react';
 import { useComposeNotificationMutation, useGetNotificationsQuery } from '../app/api/apiSlice';
+import ApiError from '../components/ApiError';
 import Card from '../components/Card';
 import Pagination from '../components/Pagination';
 import StatusBadge from '../components/StatusBadge';
@@ -26,7 +27,7 @@ export default function Notifications() {
   const [feedback, setFeedback] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   const [page, setPage] = useState(1);
 
-  const { data } = useGetNotificationsQuery({ page, limit: PAGE_SIZE });
+  const { data, isError, refetch } = useGetNotificationsQuery({ page, limit: PAGE_SIZE });
   const [composeNotification, { isLoading }] = useComposeNotificationMutation();
 
   const rows = data?.data ?? [];
@@ -142,6 +143,20 @@ export default function Notifications() {
             </tr>
           </thead>
           <tbody>
+            {isError && (
+              <tr>
+                <td colSpan={5}>
+                  <ApiError what="the notification history" onRetry={() => refetch()} />
+                </td>
+              </tr>
+            )}
+            {!isError && rows.length === 0 && (
+              <tr>
+                <td colSpan={5} className="py-12 text-center text-sm text-muted">
+                  Nothing has been sent yet.
+                </td>
+              </tr>
+            )}
             {rows.map((row) => (
               <tr key={row.id} className="border-t border-line">
                 <td className="py-4 pl-6">

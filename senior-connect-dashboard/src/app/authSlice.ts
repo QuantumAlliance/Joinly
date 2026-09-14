@@ -36,6 +36,11 @@ const authSlice = createSlice({
       localStorage.setItem('refreshToken', action.payload.refreshToken);
       localStorage.setItem('adminUser', JSON.stringify(action.payload.user));
     },
+    /** Silent refresh: swaps the access token, keeps the session otherwise intact. */
+    setAccessToken: (state, action: PayloadAction<string>) => {
+      state.accessToken = action.payload;
+      localStorage.setItem('accessToken', action.payload);
+    },
     updateUser: (state, action: PayloadAction<Partial<AuthUser>>) => {
       if (!state.user) return;
       state.user = { ...state.user, ...action.payload };
@@ -52,5 +57,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { setCredentials, updateUser, logout } = authSlice.actions;
+export const { setCredentials, setAccessToken, updateUser, logout } = authSlice.actions;
 export default authSlice.reducer;
