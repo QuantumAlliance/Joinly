@@ -12,6 +12,20 @@ dist
 dist-ssr
 *.local
 
+# ---------------------------------------------------------------------------
+# Secrets & credentials  --  NEVER COMMIT
+# ---------------------------------------------------------------------------
+# Vite inlines every VITE_* variable into the client bundle, so an API key that
+# reaches .env here ships to every visitor. Keep the file itself out of git.
+# `*.local` above already covers .env.local; these cover the rest.
+.env
+.env.*
+!.env.example
+
+*.pem
+*.key
+.npmrc
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -4,9 +4,9 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  IsUUID,
 } from 'class-validator';
 import { ActivityStatus } from '../../../common/enums';
+import { IsObjectId } from '../../../common/validators/is-object-id.validator';
 
 /** Admin activities list — tabs Pending | Approved | Rejected */
 export class AdminListActivitiesDto {
@@ -27,7 +27,7 @@ export class AdminListActivitiesDto {
   status?: ActivityStatus;
 
   @IsOptional()
-  @IsUUID()
+  @IsObjectId()
   categoryId?: string;
 
   @IsOptional()

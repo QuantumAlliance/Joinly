@@ -3,7 +3,6 @@ import {
   Controller,
   Get,
   Param,
-  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -15,6 +14,7 @@ import { AuthenticatedUser } from '../../common/interfaces/api-response.interfac
 import { NotificationsService } from './notifications.service';
 import { NOTIFICATIONS_ROUTES } from './notifications.routes';
 import { ComposeNotificationDto, ListNotificationsDto } from './dto';
+import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 
 @Controller(NOTIFICATIONS_ROUTES.ROOT)
 export class NotificationsController {
@@ -29,9 +29,20 @@ export class NotificationsController {
     return this.notificationsService.myNotifications(user, query);
   }
 
+  /**
+   * Mobile Home — bell badge count.
+   *
+   * Declared above `:id/read` for the usual reason: Nest matches routes in
+   * declaration order.
+   */
+  @Get(NOTIFICATIONS_ROUTES.UNREAD_COUNT)
+  unreadCount(@CurrentUser() user: AuthenticatedUser) {
+    return this.notificationsService.unreadCount(user);
+  }
+
   /** Mobile — mark as read */
   @Patch(NOTIFICATIONS_ROUTES.READ)
-  markAsRead(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+  markAsRead(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseObjectIdPipe) id: string) {
     return this.notificationsService.markAsRead(user, id);
   }
 

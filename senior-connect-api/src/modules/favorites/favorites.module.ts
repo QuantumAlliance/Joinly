@@ -1,13 +1,17 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { Activity } from '../activities/entities';
-import { ActivityParticipant } from '../participants/entities';
+import { MongooseModule } from '@nestjs/mongoose';
+import { Activity, ActivitySchema } from '../activities/schemas';
+import { Category, CategorySchema } from '../categories/schemas';
 import { FavoritesController } from './favorites.controller';
-import { Favorite } from './entities';
+import { Favorite, FavoriteSchema } from './schemas';
 import { FavoritesService } from './favorites.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Favorite, Activity, ActivityParticipant])],
+  imports: [MongooseModule.forFeature([
+      { name: Favorite.name, schema: FavoriteSchema },
+      { name: Activity.name, schema: ActivitySchema },
+      { name: Category.name, schema: CategorySchema },
+    ])],
   controllers: [FavoritesController],
   providers: [FavoritesService],
 })

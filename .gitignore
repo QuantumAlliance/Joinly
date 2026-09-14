@@ -1,11 +1,86 @@
-# Figma design source files (too large for git, not source code)
+# ---------------------------------------------------------------------------
+# Secrets & credentials  --  NEVER COMMIT
+# ---------------------------------------------------------------------------
+# These patterns have no leading slash, so they match at EVERY depth: this one
+# block covers senior-connect-api/, senior-connect-dashboard/ and any future
+# package. The per-project .gitignore files repeat them so a subtree stays safe
+# on its own.
+
+# Environment files. `.env.*` also catches backups such as .env.bak-qa,
+# .env.old and .env.production -- the shape that leaked credentials before.
+.env
+.env.*
+# ...but the committed template, which holds only placeholders, must stay.
+!.env.example
+!.env*.example
+
+# Private keys, certificates, keystores
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+*.asc
+*.gpg
+id_rsa
+id_ed25519
+
+# Cloud / service-account credentials
+serviceAccount*.json
+*credentials*.json
+*service-account*.json
+gha-creds-*.json
+
+# Registry and network auth
+.npmrc
+.netrc
+.pgpass
+
+# Local secret dumps
+secrets/
+*.secrets
+*.private
+
+# ---------------------------------------------------------------------------
+# Tooling state that can contain copies of the repo (and therefore its secrets)
+# ---------------------------------------------------------------------------
+# Agent worktrees are full checkouts of this repo, .env files included.
+.claude/worktrees/
+.claude/settings.local.json
+
+# Deployment platform link + build cache
+.vercel
+
+# ---------------------------------------------------------------------------
+# Dependencies & build output
+# ---------------------------------------------------------------------------
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# ---------------------------------------------------------------------------
+# Runtime artefacts
+# ---------------------------------------------------------------------------
+# User-uploaded media: not source, and may contain personal data.
+uploads/
+logs/
+*.log
+
+# ---------------------------------------------------------------------------
+# Design sources (too large for git, not source code)
+# ---------------------------------------------------------------------------
 *.fig
 Section 2.jpg
 dashboard figma/
 
-# TypeScript incremental build cache
-*.tsbuildinfo
-
-# OS
+# ---------------------------------------------------------------------------
+# OS / editor
+# ---------------------------------------------------------------------------
 .DS_Store
 Thumbs.db
+.idea/
+*.swp
+*.swo

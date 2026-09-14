@@ -1,4 +1,4 @@
-import { IsString, Length } from 'class-validator';
+import { IsString, MinLength } from 'class-validator';
 
 /** Figma "Change Password" — Current Password, Create New Password, Confirm Password */
 export class ChangePasswordDto {
@@ -6,7 +6,7 @@ export class ChangePasswordDto {
   currentPassword: string;
 
   @IsString()
-  @Length(6, 8, { message: 'Password must have 6-8 characters.' })
+  @MinLength(6, { message: 'Password must be at least 6 characters.' })
   newPassword: string;
 
   @IsString()

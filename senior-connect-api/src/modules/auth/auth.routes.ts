@@ -10,4 +10,7 @@ export const AUTH_ROUTES = {
   REFRESH_TOKEN: 'refresh-token',
   LOGOUT: 'logout',
   ADMIN_LOGIN: 'admin/login',
+  /** Phase 2 — phone as a first-class login identifier. */
+  PHONE_REQUEST_OTP: 'phone/request-otp',
+  PHONE_VERIFY: 'phone/verify',
 } as const;

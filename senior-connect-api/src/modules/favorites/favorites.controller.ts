@@ -3,7 +3,6 @@ import {
   Delete,
   Get,
   Param,
-  ParseUUIDPipe,
   Post,
   Query,
 } from '@nestjs/common';
@@ -12,6 +11,7 @@ import { AuthenticatedUser } from '../../common/interfaces/api-response.interfac
 import { FavoritesService } from './favorites.service';
 import { FAVORITES_ROUTES } from './favorites.routes';
 import { ListFavoritesDto } from './dto';
+import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 
 @Controller(FAVORITES_ROUTES.ROOT)
 export class FavoritesController {
@@ -27,7 +27,7 @@ export class FavoritesController {
   @Post(FAVORITES_ROUTES.ACTIVITY)
   add(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('activityId', ParseUUIDPipe) activityId: string,
+    @Param('activityId', ParseObjectIdPipe) activityId: string,
   ) {
     return this.favoritesService.add(user, activityId);
   }
@@ -36,7 +36,7 @@ export class FavoritesController {
   @Delete(FAVORITES_ROUTES.ACTIVITY)
   remove(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('activityId', ParseUUIDPipe) activityId: string,
+    @Param('activityId', ParseObjectIdPipe) activityId: string,
   ) {
     return this.favoritesService.remove(user, activityId);
   }

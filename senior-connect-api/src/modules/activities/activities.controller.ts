@@ -14,7 +14,6 @@ import {
   Delete,
   Get,
   Param,
-  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -26,6 +25,8 @@ import { AuthenticatedUser } from '../../common/interfaces/api-response.interfac
 import { ActivitiesService } from './activities.service';
 import { ACTIVITIES_ROUTES } from './activities.routes';
 import {
+  ActivitySuggestionsDto,
+  ActivitySummaryDto,
   AdminListActivitiesDto,
   CreateActivityDto,
   DiscoverActivitiesDto,
@@ -33,6 +34,7 @@ import {
   UpdateActivityDto,
   UpdateActivityStatusDto,
 } from './dto';
+import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 
 @Controller(ACTIVITIES_ROUTES.ROOT)
 export class ActivitiesController {
@@ -54,6 +56,23 @@ export class ActivitiesController {
   @Get(ACTIVITIES_ROUTES.FEATURED)
   featured(@CurrentUser() user: AuthenticatedUser) {
     return this.activitiesService.featured(user);
+  }
+
+  /**
+   * Mobile Home — hero banner count ("12 activities happening near you today").
+   *
+   * Declared above `:id`: Nest matches in declaration order, and the param
+   * route would otherwise swallow `/summary` and try it as an ObjectId.
+   */
+  @Get(ACTIVITIES_ROUTES.SUMMARY)
+  summary(@CurrentUser() user: AuthenticatedUser, @Query() query: ActivitySummaryDto) {
+    return this.activitiesService.summary(user, query);
+  }
+
+  /** Mobile Discover — search autocomplete. */
+  @Get(ACTIVITIES_ROUTES.SUGGESTIONS)
+  suggestions(@CurrentUser() user: AuthenticatedUser, @Query() query: ActivitySuggestionsDto) {
+    return this.activitiesService.suggestions(user, query);
   }
 
   /** Mobile — My Activities (All | Upcoming | Past) */
@@ -78,7 +97,7 @@ export class ActivitiesController {
   /** Admin — activity details */
   @Roles(UserRole.Admin)
   @Get(ACTIVITIES_ROUTES.ADMIN_ACTIVITY)
-  adminDetails(@Param('id', ParseUUIDPipe) id: string) {
+  adminDetails(@Param('id', ParseObjectIdPipe) id: string) {
     return this.activitiesService.adminDetails(id);
   }
 
@@ -86,7 +105,7 @@ export class ActivitiesController {
   @Roles(UserRole.Admin)
   @Patch(ACTIVITIES_ROUTES.ADMIN_ACTIVITY_STATUS)
   adminUpdateStatus(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseObjectIdPipe) id: string,
     @Body() dto: UpdateActivityStatusDto,
   ) {
     return this.activitiesService.adminUpdateStatus(id, dto);
@@ -95,13 +114,13 @@ export class ActivitiesController {
   /** Admin — delete */
   @Roles(UserRole.Admin)
   @Delete(ACTIVITIES_ROUTES.ADMIN_ACTIVITY)
-  adminRemove(@Param('id', ParseUUIDPipe) id: string) {
+  adminRemove(@Param('id', ParseObjectIdPipe) id: string) {
     return this.activitiesService.adminRemove(id);
   }
 
   /** Mobile — Activity Details */
   @Get(ACTIVITIES_ROUTES.DETAILS)
-  details(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+  details(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseObjectIdPipe) id: string) {
     return this.activitiesService.details(user, id);
   }
 
@@ -109,7 +128,7 @@ export class ActivitiesController {
   @Patch(ACTIVITIES_ROUTES.DETAILS)
   update(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', ParseObjectIdPipe) id: string,
     @Body() dto: UpdateActivityDto,
   ) {
     return this.activitiesService.update(user, id, dto);
@@ -117,7 +136,7 @@ export class ActivitiesController {
 
   /** Mobile — organizer deletes own activity */
   @Delete(ACTIVITIES_ROUTES.DETAILS)
-  remove(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseObjectIdPipe) id: string) {
     return this.activitiesService.remove(user, id);
   }
 }

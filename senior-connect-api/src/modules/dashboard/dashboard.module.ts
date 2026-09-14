@@ -1,14 +1,19 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { Activity } from '../activities/entities';
-import { Category } from '../categories/entities';
-import { ActivityParticipant } from '../participants/entities';
-import { User } from '../users/entities';
+import { MongooseModule } from '@nestjs/mongoose';
+import { Activity, ActivitySchema } from '../activities/schemas';
+import { Category, CategorySchema } from '../categories/schemas';
+import { ActivityParticipant, ActivityParticipantSchema } from '../participants/schemas';
+import { User, UserSchema } from '../users/schemas';
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Activity, ActivityParticipant, Category])],
+  imports: [MongooseModule.forFeature([
+      { name: User.name, schema: UserSchema },
+      { name: Activity.name, schema: ActivitySchema },
+      { name: Category.name, schema: CategorySchema },
+      { name: ActivityParticipant.name, schema: ActivityParticipantSchema },
+    ])],
   controllers: [DashboardController],
   providers: [DashboardService],
 })

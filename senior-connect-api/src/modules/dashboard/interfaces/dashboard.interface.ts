@@ -18,7 +18,8 @@ export interface RecentUserRow {
   id: string;
   firstName: string;
   lastName: string;
-  email: string;
+  /** Null for an account that registered from a phone number alone. */
+  email: string | null;
   profilePhoto: string | null;
   dateJoined: Date;
   status: UserStatus;

@@ -1,5 +1,25 @@
 node_modules/
 dist/
 uploads/
-.env
 *.log
+
+# ---------------------------------------------------------------------------
+# Secrets & credentials  --  NEVER COMMIT
+# ---------------------------------------------------------------------------
+# `.env.*` covers backups too (.env.bak-qa, .env.old, .env.production).
+# Order matters: the negations must follow the patterns they re-include.
+.env
+.env.*
+.env*.local
+!.env.example
+
+# Private keys, certificates, service accounts
+*.pem
+*.key
+*.p12
+*.pfx
+serviceAccount*.json
+*credentials*.json
+.npmrc
+
+.vercel

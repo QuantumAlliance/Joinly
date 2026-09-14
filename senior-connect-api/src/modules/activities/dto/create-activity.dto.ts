@@ -7,13 +7,13 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  IsUUID,
   Max,
   MaxLength,
   Min,
   ValidateIf,
 } from 'class-validator';
 import { Difficulty } from '../../../common/enums';
+import { IsObjectId } from '../../../common/validators/is-object-id.validator';
 
 /** Figma "Create Activities" — all labels preserved */
 export class CreateActivityDto {
@@ -24,7 +24,7 @@ export class CreateActivityDto {
 
   /** "Category" — pick an existing category… */
   @ValidateIf((o) => !o.categoryName)
-  @IsUUID()
+  @IsObjectId()
   categoryId?: string;
 
   /** …or "Add Category name" inline */
